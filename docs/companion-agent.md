@@ -149,6 +149,11 @@ trusted loopback HTTPS, exact report retry after restart, higher revisions,
 Console/agent restart persistence and revocation with SQLite. The VM was restored
 and shut down. This is separate from the earlier agent contract fixture tests.
 
+The [device-page canary](companion-agent-ui-validation.md) also passed UI-issued
+enrollment and binding, real-service report display, credential rotation,
+revocation and recovery. Revision 2 was retained while the observation sequence
+advanced to 4; results stayed unsupported. The isolated VM was restored afterward.
+
 MySQL/PostgreSQL transaction behavior, a network/reverse-proxy deployment,
 unattended reboot with Console and operational
 audit retention still need validation or implementation before rollout.
