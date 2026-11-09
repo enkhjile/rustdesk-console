@@ -2,10 +2,12 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { selfSignedMessages } from "./features/self-signed-client/messages";
 import { developerMessages } from "./features/developer/messages";
+import { agentMessages } from "./features/agent/messages";
 
 const en: Record<string, string> = {
   ...selfSignedMessages.en,
   ...developerMessages.en,
+  ...agentMessages.en,
   appTitle: "RustDesk Console",
   login: "Sign in",
   register: "Register",
@@ -907,6 +909,7 @@ const en: Record<string, string> = {
 const zhCN: Record<string, string> = {
   ...selfSignedMessages.zhCN,
   ...developerMessages["zh-CN"],
+  ...agentMessages["zh-CN"],
   appTitle: "RustDesk 控制台",
   login: "登录",
   register: "注册",

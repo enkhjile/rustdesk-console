@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "@phosphor-icons/react";
 import { Button } from "@cloudflare/kumo/components/button";
@@ -8,6 +9,7 @@ import { apiGet } from "../lib/api";
 import { formatDateTime, formatUnixSeconds } from "../lib/dateFormat";
 import { usePublicAdminConfig } from "../lib/adminTitle";
 import { TableState } from "./TableState";
+import { AgentPanel } from "../features/agent/AgentPanel";
 
 const PEER_ONLINE_WINDOW_SECONDS = 90;
 const ACTIVE_CONNECTION_PAGE_SIZE = 50;
@@ -150,7 +152,7 @@ export function PeerInfoDrawer({
         {t("showDeviceInfo")}
       </Button>
 
-      {open && (
+      {open && createPortal(
         <div className="fixed inset-0 z-50">
           <button
             type="button"
@@ -237,6 +239,8 @@ export function PeerInfoDrawer({
                 </p>
               </section>
 
+              {scope === "admin" && <AgentPanel peerRowId={Number(row.row_id)} />}
+
               {scope === "admin" && (
                 <section className="mt-5 grid gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -295,7 +299,8 @@ export function PeerInfoDrawer({
               )}
             </div>
           </aside>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
