@@ -73,7 +73,9 @@ passed old-token rejection during an interrupted handoff, administrator local
 replacement, Console/service restart retention and recovery from revocation.
 Reports retained the UUID/revision and advanced the sequence; settings remained
 `unsupported` with null applied revision. The VM was restored and stopped.
-Ordinary-user rejection of the agent's replacement CLI remains unverified.
+The actual replacement CLI also rejected the dummy ordinary-user service-logon
+token with exit 1 and `PermissionDenied`; enrollment/state bytes and permissions
+remained unchanged. The temporary account/service were removed by VM restoration.
 
 ## Desired state and reports
 
