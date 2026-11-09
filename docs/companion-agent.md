@@ -25,7 +25,7 @@ raw protocol JSON, without that envelope.
    Keep the credential in an approved secret provider; never put it in shell
    literals, arguments, environment variables, logs or source control.
 2. Follow the agent's
-   [service setup and enrollment instructions](https://github.com/enkhjile/rustdesk-agent/blob/main/docs/enrollment.md).
+   [service setup and enrollment instructions](https://github.com/enkhjile/rustdesk-agent/blob/alpha/docs/enrollment.md).
    Run `rustdesk-agent.exe --enroll https://console.example` as administrator,
    supplying the credential through redirected stdin from the secret provider.
    Enrollment prints a fresh agent UUID. It does not contact Console.
@@ -99,8 +99,12 @@ assets first with `pnpm install --frozen-lockfile && pnpm run build` in `web`.
 The PR workflow runs the full Rust suite, Clippy, build, and existing web tests
 on Linux; it does not publish or deploy.
 
-MySQL/PostgreSQL transaction behavior, a real Windows agent against this Console
-over HTTPS, credential rotation/recovery and operational audit retention still
-need validation or implementation before rollout. The existing agent fixture/VM
-tests do not substitute for that end-to-end Console canary. Production automatic
-application remains disabled.
+The [real Windows service canary](companion-agent-validation.md) passed enrollment,
+trusted loopback HTTPS, exact report retry after restart, higher revisions,
+Console/agent restart persistence and revocation with SQLite. The VM was restored
+and shut down. This is separate from the earlier agent contract fixture tests.
+
+MySQL/PostgreSQL transaction behavior, a network/reverse-proxy deployment,
+unattended reboot with Console, credential rotation/recovery and operational
+audit retention still need validation or implementation before rollout.
+Production automatic application remains disabled.
