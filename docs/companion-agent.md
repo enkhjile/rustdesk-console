@@ -9,6 +9,19 @@ writes. Run the agent's normal service configuration without the experimental
 
 ## Provision one device
 
+Administrators can open **Devices → Device info → Companion agent** to enroll
+an existing device, bind the UUID printed by local agent enrollment, and view
+its latest report and counters. Rotate and revoke require confirmation. Newly
+issued credentials are displayed once, outside browser storage and query caches,
+and cleared when hidden, when the drawer closes, or when the device/session changes.
+Copying is explicit; the clipboard is not cleared automatically.
+
+The panel shows the last successful contact, not a live online indicator. Desired
+values reflect the last agent poll and can lag strategy changes. Reports do not
+establish verified application. The panel provides no settings editor or switch
+to enable automatic writes. Local administrator enrollment, state initialization,
+and service installation are still required on the Windows device.
+
 Use a test instance with trusted HTTPS first. Console's usual TLS reverse proxy
 must forward `/v1/agent/*` as well as `/api/*`, without redirects. These routes
 must not be cached. Set proxy request deadlines and rate limits; the integration
@@ -63,7 +76,9 @@ again and install the newest token. All older tokens remain invalid. An unbound
 registration can also rotate, but remains inactive until explicitly bound.
 Disabled or missing Console devices still cannot authenticate. This is recovery
 of credentials, not recovery of destroyed local identity/state or reassignment
-to another machine. An enrollment/rotation UI is not implemented.
+to another machine. The device panel's **Rotate credential** action performs the
+same operation; **Revoke access** blocks subsequent polling/reporting without
+changing RustDesk settings.
 
 Issuance, rotation, binding and revocation log administrator/agent IDs, never
 credentials. Rotation is serialized with authenticated polling/report updates.
@@ -135,6 +150,6 @@ Console/agent restart persistence and revocation with SQLite. The VM was restore
 and shut down. This is separate from the earlier agent contract fixture tests.
 
 MySQL/PostgreSQL transaction behavior, a network/reverse-proxy deployment,
-unattended reboot with Console, credential rotation/recovery and operational
+unattended reboot with Console and operational
 audit retention still need validation or implementation before rollout.
 Production automatic application remains disabled.
