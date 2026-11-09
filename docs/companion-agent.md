@@ -68,6 +68,13 @@ to another machine. An enrollment/rotation UI is not implemented.
 Issuance, rotation, binding and revocation log administrator/agent IDs, never
 credentials. Rotation is serialized with authenticated polling/report updates.
 
+The paired agent's [isolated rotation test](https://github.com/enkhjile/rustdesk-agent/blob/feat/credential-rotation/docs/validation/credential-rotation.md)
+passed old-token rejection during an interrupted handoff, administrator local
+replacement, Console/service restart retention and recovery from revocation.
+Reports retained the UUID/revision and advanced the sequence; settings remained
+`unsupported` with null applied revision. The VM was restored and stopped.
+Ordinary-user rejection of the agent's replacement CLI remains unverified.
+
 ## Desired state and reports
 
 `GET /v1/agent/desired` uses Console's existing effective-strategy precedence
