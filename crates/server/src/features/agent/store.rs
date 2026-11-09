@@ -26,6 +26,14 @@ fn counter(s: &str) -> Result<u64> {
     s.parse()
         .map_err(|_| Error(StatusCode::SERVICE_UNAVAILABLE, "invalid_stored_counter"))
 }
+fn new_credential() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    format!(
+        "rda_{}",
+        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    )
+}
 
 pub async fn create(db: &DatabaseConnection, peer_row_id: i32) -> Result<(i32, String)> {
     if peer::Entity::find_by_id(peer_row_id)
@@ -43,12 +51,7 @@ pub async fn create(db: &DatabaseConnection, peer_row_id: i32) -> Result<(i32, S
     {
         return Err(conflict());
     }
-    let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
-    let credential = format!(
-        "rda_{}",
-        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
-    );
+    let credential = new_credential();
     let row = agent::ActiveModel {
         peer_row_id: Set(peer_row_id),
         agent_uuid: Set(None),
@@ -108,6 +111,22 @@ pub async fn revoke(db: &DatabaseConnection, id: i32) -> Result<()> {
         .exec(db)
         .await?;
     Ok(())
+}
+
+pub async fn rotate(db: &DatabaseConnection, id: i32) -> Result<String> {
+    let tx = db.begin().await?;
+    lock_id(&tx, id).await?;
+    let row = agent::Entity::find_by_id(id)
+        .one(&tx)
+        .await?
+        .ok_or(Error(StatusCode::NOT_FOUND, "agent_not_found"))?;
+    let credential = new_credential();
+    let mut row: agent::ActiveModel = row.into();
+    row.token_hash = Set(hash(&credential));
+    row.revoked = Set(false);
+    row.update(&tx).await?;
+    tx.commit().await?;
+    Ok(credential)
 }
 
 // A no-op UPDATE obtains the database's write/row lock (including SQLite).

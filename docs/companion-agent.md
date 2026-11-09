@@ -41,11 +41,32 @@ raw protocol JSON, without that envelope.
    refreshed on agent requests, so the displayed snapshot can lag strategy edits.
 
 `POST /api/admin/agent/{id}/revoke` immediately blocks subsequent authenticated
-agent requests. It retains the UUID, counters and report. Revocation is permanent
-in this slice; duplicate registrations are refused, including revoked ones.
-Credential rotation, reenrollment/recovery and enrollment UI are not implemented.
-Do not delete database rows to reset identities or counters. Issuance, binding
-and revocation log administrator/agent IDs, never credentials.
+agent requests. It retains the UUID, counters and report. Duplicate registrations
+are refused, including revoked ones. Do not delete rows to reset counters.
+
+## Rotate or recover a device credential
+
+Stop the agent service, then call `POST /api/admin/agent/{id}/rotate` using an
+administrator session. The response data contains `id` and a fresh one-time
+`credential`. Rotation immediately invalidates the old token and clears
+revocation, preserving the device/UUID binding, desired revision, sequence,
+report and last-contact time. Only the new credential's hash is stored.
+
+Supply the replacement through redirected stdin to the agent's elevated
+`--replace-credential` command, then restart its normal service. This requires
+an agent build supporting replacement and intact enrollment and initialized
+state. Do not run `--enroll` or `--init-state` again. Local replacement preserves
+identity and durable state; verify resumed reports in Console afterward.
+
+If the response is lost or setup is interrupted, an administrator can rotate
+again and install the newest token. All older tokens remain invalid. An unbound
+registration can also rotate, but remains inactive until explicitly bound.
+Disabled or missing Console devices still cannot authenticate. This is recovery
+of credentials, not recovery of destroyed local identity/state or reassignment
+to another machine. An enrollment/rotation UI is not implemented.
+
+Issuance, rotation, binding and revocation log administrator/agent IDs, never
+credentials. Rotation is serialized with authenticated polling/report updates.
 
 ## Desired state and reports
 
