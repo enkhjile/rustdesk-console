@@ -112,8 +112,8 @@ pub async fn list(
     })
 }
 
-pub async fn info_by_id(
-    db: &DatabaseConnection,
+pub async fn info_by_id<C: ConnectionTrait>(
+    db: &C,
     id: i32,
 ) -> Result<Option<strategy::Model>, DbErr> {
     strategy::Entity::find_by_id(id).one(db).await
@@ -393,8 +393,8 @@ async fn unique_peer_strategy_name(
     ))
 }
 
-pub async fn effective_for_peer(
-    db: &DatabaseConnection,
+pub async fn effective_for_peer<C: ConnectionTrait>(
+    db: &C,
     p: &peer::Model,
 ) -> Result<Option<EffectiveStrategy>, DbErr> {
     let user_id = p.user_id.to_string();
@@ -415,8 +415,8 @@ pub async fn effective_for_peer(
     Ok(None)
 }
 
-async fn effective_for_target(
-    db: &DatabaseConnection,
+async fn effective_for_target<C: ConnectionTrait>(
+    db: &C,
     target_type: &str,
     target_id: &str,
 ) -> Result<Option<EffectiveStrategy>, DbErr> {

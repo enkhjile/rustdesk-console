@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod self_signed_client;
 
 use axum::{extract::State, response::Response, routing::get, Router};
@@ -13,6 +14,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/features", get(metadata))
         .merge(self_signed_client::routes())
+        .merge(agent::routes())
 }
 
 async fn metadata(State(state): State<AppState>, _user: BackendUser) -> Response {
