@@ -42,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/admin/agent/create", post(create))
         .route("/api/admin/agent/:id/bind", post(bind))
         .route("/api/admin/agent/:id/revoke", post(revoke))
+        .route("/api/admin/agent/:id/rotate", post(rotate))
         .route("/api/admin/agent/peer/:id", get(peer_status))
         .layer(DefaultBodyLimit::max(65536))
         .layer(SetResponseHeaderLayer::overriding(
@@ -128,6 +129,20 @@ async fn peer_status(
     Path(id): Path<i32>,
 ) -> Result<Response, Error> {
     Ok(response::success(store::status(&state.db, id).await?))
+}
+
+async fn rotate(
+    State(state): State<AppState>,
+    admin: AdminUser,
+    Path(id): Path<i32>,
+) -> Result<Response, Error> {
+    let credential = store::rotate(&state.db, id).await?;
+    tracing::info!(
+        admin_id = admin.user.id,
+        agent_id = id,
+        "agent credential rotated"
+    );
+    Ok(response::success(json!({"id":id,"credential":credential})))
 }
 
 #[cfg(test)]

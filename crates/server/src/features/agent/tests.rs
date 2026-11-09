@@ -144,6 +144,133 @@ fn report(uuid: &str, revision: u64, sequence: u64) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn rotation_recovers_credentials_without_resetting_identity_or_history() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (id, old, uuid) = enroll(&app, 1).await;
+    assign(&db, "device-1", "click").await;
+    let body = report(&uuid, 1, 7).to_string();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/status", &old, "", &body)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let path = format!("/api/admin/agent/{id}/rotate");
+    for admin in ["", "session-2"] {
+        assert_ne!(
+            request(&app, "POST", &path, &old, admin, "").await.1["code"],
+            0
+        );
+    }
+    // A lost response is recovered by issuing again; revocation can also be recovered.
+    let mut previous = old.clone();
+    for revoked in [false, true] {
+        let before = store::status(&db, 1).await.unwrap();
+        if revoked {
+            store::revoke(&db, id).await.unwrap();
+        }
+        let (code, response) = request(&app, "POST", &path, "", "session-1", "").await;
+        assert_eq!(code, StatusCode::OK);
+        let replacement = response["data"]["credential"].as_str().unwrap().to_owned();
+        assert_ne!(replacement, previous);
+        assert_eq!(store::status(&db, 1).await.unwrap(), before);
+        for rejected in [&old, &previous] {
+            assert_eq!(
+                request(&app, "GET", "/v1/agent/desired", rejected, "", "")
+                    .await
+                    .0,
+                StatusCode::UNAUTHORIZED
+            );
+            assert_eq!(
+                request(&app, "POST", "/v1/agent/status", rejected, "", &body)
+                    .await
+                    .0,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        let row = companion_agent::Entity::find_by_id(id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(row.token_hash, replacement);
+        assert_eq!(row.token_hash.len(), 64);
+        assert_eq!(
+            request(&app, "POST", "/v1/agent/status", &replacement, "", &body)
+                .await
+                .0,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            request(
+                &app,
+                "POST",
+                "/v1/agent/status",
+                &replacement,
+                "",
+                &report(&uuid, 1, 6).to_string()
+            )
+            .await
+            .0,
+            StatusCode::CONFLICT
+        );
+        previous = replacement;
+    }
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/api/admin/agent/999/rotate",
+            "",
+            "session-1",
+            ""
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn rotation_does_not_activate_unbound_or_disabled_devices() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (id, original) = store::create(&db, 1).await.unwrap();
+    let replacement = store::rotate(&db, id).await.unwrap();
+    for token in [&original, &replacement] {
+        assert_eq!(
+            request(&app, "GET", "/v1/agent/desired", token, "", "")
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    store::bind(&db, id, &uuid::Uuid::new_v4().to_string())
+        .await
+        .unwrap();
+    assert_eq!(
+        request(&app, "GET", "/v1/agent/desired", &replacement, "", "")
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let mut device: peer::ActiveModel = peer::Entity::find_by_id(1)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .into();
+    device.status = Set(0);
+    device.update(&db).await.unwrap();
+    let replacement = store::rotate(&db, id).await.unwrap();
+    assert_eq!(
+        request(&app, "GET", "/v1/agent/desired", &replacement, "", "")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn enrollment_is_admin_only_credentials_are_device_bound_and_revocable() {
     let (app, db) = setup("sqlite::memory:").await;
     for admin in ["", "session-2"] {
@@ -517,6 +644,32 @@ async fn concurrent_polls_and_reports_do_not_reuse_state_for_different_content()
     assert!(
         (a.0 == StatusCode::NO_CONTENT && b.0 == StatusCode::CONFLICT)
             || (b.0 == StatusCode::NO_CONTENT && a.0 == StatusCode::CONFLICT)
+    );
+    // A concurrent report must not restore the old credential hash.
+    let id = store::status(&db, 1).await.unwrap()["id"].as_i64().unwrap() as i32;
+    let (rotated, submitted) = tokio::join!(
+        store::rotate(&db, id),
+        store::report(
+            &other_db,
+            &token,
+            serde_json::from_value(report(&uuid, 1, 2)).unwrap()
+        )
+    );
+    let replacement = rotated.unwrap();
+    if let Err(error) = submitted {
+        assert_eq!(error.0, StatusCode::UNAUTHORIZED);
+    }
+    assert_eq!(
+        request(&other_app, "GET", "/v1/agent/desired", &token, "", "")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        request(&other_app, "GET", "/v1/agent/desired", &replacement, "", "")
+            .await
+            .0,
+        StatusCode::OK
     );
     drop(app);
     drop(other_app);
