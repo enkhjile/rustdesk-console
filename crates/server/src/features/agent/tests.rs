@@ -7,11 +7,12 @@ use axum::{
 use sea_orm::*;
 use tower::ServiceExt;
 
-async fn setup(url: &str) -> (Router, DatabaseConnection) {
+pub(super) async fn setup(url: &str) -> (Router, DatabaseConnection) {
     let db = Database::connect(url).await.unwrap();
     let schema = Schema::new(DbBackend::Sqlite);
     for mut statement in [
         schema.create_table_from_entity(companion_agent::Entity),
+        schema.create_table_from_entity(::entity::agent_password::Entity),
         schema.create_table_from_entity(peer::Entity),
         schema.create_table_from_entity(strategy::Entity),
         schema.create_table_from_entity(strategy_assignment::Entity),
@@ -119,6 +120,31 @@ async fn enroll(app: &Router, peer: i32) -> (i32, String, String) {
         StatusCode::OK
     );
     (id, credential, uuid)
+}
+
+#[tokio::test]
+async fn password_routes_require_admin_or_device_authentication() {
+    let (app, _) = setup("sqlite::memory:").await;
+    for admin in ["", "session-2"] {
+        for method in ["GET", "POST"] {
+            let (_, body) = request(
+                &app,
+                method,
+                "/api/admin/agent/1/password",
+                "",
+                admin,
+                r#"{"password":"test-only-password"}"#,
+            )
+            .await;
+            assert_ne!(body["code"], 0);
+        }
+    }
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/password/claim", "invalid", "", "")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
 }
 async fn assign(db: &DatabaseConnection, peer: &str, value: &str) -> strategy::Model {
     let s = crate::services::strategy::create(

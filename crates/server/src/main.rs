@@ -81,6 +81,7 @@ async fn serve(cfg: config::Config, config_path: PathBuf) -> anyhow::Result<()> 
     };
     tracing::info!("API SERVER START");
     let state = bootstrap::build_state(cfg, config_path).await?;
+    features::agent::password::start_cleanup(state.db.clone());
     services::server_cmd::spawn_saved_relay_pool_sync(state.db.clone(), state.config.clone());
     services::geo_relay::cleanup_stale_handoffs(&state.config);
     services::geo_relay::spawn_startup_sync(state.db.clone(), state.config.clone());

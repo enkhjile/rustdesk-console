@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { apiGet, apiPost } from "../../lib/api";
 import { getAuthSessionId, subscribeAuthState } from "../../lib/auth";
 import { formatUnixSeconds } from "../../lib/dateFormat";
+import { PasswordPanel } from "./PasswordPanel";
 
 type Settings = Partial<Record<"approve_mode" | "verification_method", string>>;
 export interface AgentStatus {
@@ -183,6 +184,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                   </div>
                 ))}
               </div>
+              <PasswordPanel agentId={agent.id} session={session} enabled={!busy && !hasCredential && !status.isError && !agent.revoked && !!agent.agent_uuid && agent.report?.management_mode === "managed" && agent.report?.rustdesk_version === "1.4.7"} />
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" disabled={disabled || !!confirm} onClick={() => setConfirm("rotate")}>{t("agentRotate")}</Button>
                 {!agent.revoked && <Button variant="destructive" disabled={disabled || !!confirm} onClick={() => setConfirm("revoke")}>{t("agentRevoke")}</Button>}
