@@ -177,7 +177,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                   <div key={key} className="mt-3 break-words text-xs">
                     <p className="font-medium">{t(key === "approve_mode" ? "agentApproval" : "agentVerification")}</p>
                     <p>{t("agentDesired")}: {agent.desired_settings?.[key] || t("agentUnmanaged")}</p>
-                    <p>{t("agentResult")}: <span>{!reportCurrent && agent.desired_settings?.[key] ? t("agentPending") : t(outcomeLabels[agent.report?.results[key] || ""] || "agentNoResult")}</span></p>
+                    <p>{t("agentResult")}: <span>{!agent.desired_settings?.[key] ? t("agentUnmanaged") : !reportCurrent ? t("agentPending") : t(outcomeLabels[agent.report?.results[key] || ""] || "agentNoResult")}</span></p>
                   </div>
                 ))}
               </div>

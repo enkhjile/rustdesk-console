@@ -69,6 +69,18 @@ it("shows an edited policy as pending before the agent fetches its next revision
   expect(screen.queryByText("CLI readback matches (not verified live)")).toBeNull();
 });
 
+it("hides the old setting result after its policy is removed", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
+    desired_revision: "7", reported_revision: "7", policy_pending: true,
+    desired_settings: null,
+    report: { desired_revision: 7, management_mode: "managed", results: { approve_mode: "unverified_cli_match" } },
+  });
+  mount();
+  await screen.findByText("Managed");
+  expect(screen.getByText("Pending current policy")).toBeDefined();
+  expect(screen.queryByText("CLI readback matches (not verified live)")).toBeNull();
+});
+
 it("shows a no-policy heartbeat distinctly from no report and application results", async () => {
   vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid, last_seen: 1700000000,
     observation_sequence: "1", report: { desired_revision: null, rustdesk_id: "123", rustdesk_version: "1.4.7", applied_revision: null, results: {} },

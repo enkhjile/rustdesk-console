@@ -161,6 +161,17 @@ integers.
 
 ## Validation and remaining gates
 
+Normal management changes are paired with
+[agent #25](https://github.com/enkhjile/rustdesk-agent/pull/25).
+Mode compatibility, retry identity, immediate pending-policy display and policy
+removal are covered by backend/panel tests. A real Chrome test against an isolated
+loopback Console instance confirmed the policy editor link, editing approval mode,
+and pending display without an agent poll. That browser used synthetic reports;
+the separate-host Windows agent test has not run. See the
+[paired validation record](https://github.com/enkhjile/rustdesk-agent/blob/feat/console-managed-settings/docs/validation/console-managed-settings.md)
+for completed checks and remaining VM/password gates. No password management API
+is introduced by this change.
+
 Route/store tests use dummy credentials and SQLite, including a file database
 reopened between requests and concurrent requests through independent database
 connections. They cover authorization, immutable binding, allowlisting,
