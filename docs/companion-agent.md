@@ -3,9 +3,9 @@
 This fork implements the first server integration for
 [rustdesk-agent](https://github.com/enkhjile/rustdesk-agent). It registers one
 agent per existing Console device, projects the device's effective strategy into
-the agent protocol, and persists its latest report. It does not enable agent
-writes. Run the agent's normal service configuration without the experimental
-`lab-apply` feature/flag. No RustDesk client modification is required.
+the agent protocol, and persists its latest report. A normally installed managed
+agent applies the two supported settings; an observe-only agent only reports.
+No special build or RustDesk client modification is required.
 
 ## Provision one device
 
@@ -17,9 +17,12 @@ and cleared when hidden, when the drawer closes, or when the device/session chan
 Copying is explicit; the clipboard is not cleared automatically.
 
 The panel shows the last successful contact, not a live online indicator. Desired
-values reflect the last agent poll and can lag strategy changes. Reports do not
-establish verified application. The panel provides no settings editor or switch
-to enable automatic writes. Local administrator enrollment, state initialization,
+values reflect the current effective strategy. Changes awaiting an agent poll or
+report show as pending, with readable per-setting outcomes afterward. Links open
+the existing strategy editor and assignments; device, user, then group precedence
+selects the effective strategy. The panel displays reported service mode, or
+unknown for older agents. CLI matches do not establish live verification.
+Local administrator enrollment, state initialization,
 and service installation are still required on the Windows device.
 
 Use a test instance with trusted HTTPS first. Console's usual TLS reverse proxy
@@ -48,10 +51,11 @@ raw protocol JSON, without that envelope.
    Repeating the same binding is safe; changing it or sharing a UUID is refused.
 4. Run the agent's administrator-only `--init-state` once, then start its normal
    service. It polls Console using the per-device credential as a Bearer token.
-5. Read `GET /api/admin/agent/peer/{row_id}` for the last persisted desired
-   snapshot, report, sequence and successful-contact time. An unregistered device
-   returns null. This API never returns credentials or hashes. Desired state is
-   refreshed on agent requests, so the displayed snapshot can lag strategy edits.
+5. Read `GET /api/admin/agent/peer/{row_id}` for current effective settings,
+   report, sequence and successful-contact time. `policy_pending` identifies
+   edits not fetched by the agent; `reported_revision` is a decimal string for
+   exact comparisons. Reading status does not allocate revisions or update
+   contact time. An unregistered device returns null. No credentials are returned.
 
 `POST /api/admin/agent/{id}/revoke` immediately blocks subsequent authenticated
 agent requests. It retains the UUID, counters and report. Duplicate registrations
@@ -120,8 +124,10 @@ positive u64 `observation_sequence`, nullable RustDesk ID/version, null
 duplicate or missing required fields are rejected. Allowed outcomes are
 `unsupported`, `unverified_cli_match`, `read_failed`, `write_failed`, `mismatch`
 and `indeterminate`. This integration deliberately rejects `verified` and non-null
-applied revisions; no automated live verifier exists yet. The default agent
-reports `unsupported`, which is receipt/observation evidence, not application.
+applied revisions; no automated live verifier exists yet. Observe-only agents
+report `unsupported`. Optional `management_mode` accepts `managed` or
+`observe_only`; absence remains valid for old agents. Explicit null and unknown
+values are rejected, and mode is part of identical-retry identity.
 
 When no policy is assigned, the status route also accepts a heartbeat with
 `desired_revision: null`, `applied_revision: null` and `results: {}`. All other
@@ -154,6 +160,23 @@ strings to preserve u64 precision in JavaScript; protocol counters remain JSON
 integers.
 
 ## Validation and remaining gates
+
+Normal management changes are paired with
+[agent #25](https://github.com/enkhjile/rustdesk-agent/pull/25).
+Mode compatibility, retry identity, immediate pending-policy display and policy
+removal are covered by backend/panel tests. A real Chrome test against an isolated
+loopback Console instance confirmed the policy editor link, editing approval mode,
+and pending display without an agent poll. That browser used synthetic reports.
+The separate-host private two-VM run then passed managed reporting, identical
+retry after a dropped acknowledgement, observe-only upgrades, explicit managed
+recovery, policy removal/reassignment and unattended reboot. The normal CI package
+ran as LocalService against this Console build. Reports retained null applied
+revision and unverified CLI outcomes. Both VMs were restored and stopped, with
+zero network adapters. See the
+[paired validation record](https://github.com/enkhjile/rustdesk-agent/blob/feat/console-managed-settings/docs/validation/console-managed-settings.md)
+for completed checks and remaining GUI/password connection tests. The official
+password CLI accepted dummy changes under LocalService and LabAdmin; no password management API
+is introduced by this change.
 
 Route/store tests use dummy credentials and SQLite, including a file database
 reopened between requests and concurrent requests through independent database

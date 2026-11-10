@@ -13,11 +13,16 @@ export interface AgentStatus {
   agent_uuid: string | null;
   revoked: boolean;
   desired_revision: string;
+  reported_revision?: string | null;
+  policy_pending?: boolean;
+  policy_invalid?: boolean;
+  strategy_id?: number | null;
   desired_settings: Settings | null;
   observation_sequence: string;
   last_seen: number;
   report: {
     desired_revision: number | null;
+    management_mode?: "managed" | "observe_only";
     rustdesk_id: string | null;
     rustdesk_version: string | null;
     applied_revision: null;
@@ -25,6 +30,11 @@ export interface AgentStatus {
   } | null;
 }
 type Action = "create" | "bind" | "rotate" | "revoke";
+const outcomeLabels: Record<string, string> = {
+  unsupported: "agentUnsupported", unverified_cli_match: "agentCliMatch",
+  read_failed: "agentReadFailed", write_failed: "agentWriteFailed",
+  mismatch: "agentMismatch", indeterminate: "agentIndeterminate",
+};
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const inputClass = "w-full rounded-lg border border-kumo-line bg-kumo-base px-3 py-2 text-sm text-kumo-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-kumo-brand";
 
@@ -49,8 +59,12 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
   const status = useQuery({
     queryKey: ["companion-agent", session, peerRowId],
     queryFn: () => apiGet<AgentStatus | null>(`/api/admin/agent/peer/${peerRowId}`),
+    refetchInterval: 5000,
   });
   const agent = status.data;
+  const reportCurrent = !!agent?.report && !agent.policy_pending && (agent.desired_settings
+    ? agent.reported_revision === agent.desired_revision
+    : agent.report.desired_revision === null);
   const disabled = busy || hasCredential || status.isFetching || status.isError;
 
   useEffect(() => {
@@ -108,7 +122,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
         <h3 id={`${id}-title`} className="text-sm font-semibold">{t("agentTitle")}</h3>
         <Button size="sm" variant="secondary" disabled={busy || status.isFetching} onClick={() => void status.refetch()}>{t("refresh")}</Button>
       </div>
-      <p className="text-xs leading-5 text-kumo-subtle">{t("agentReadOnly")}</p>
+      <p className="text-xs leading-5 text-kumo-subtle">{t("agentManagementHelp")}</p>
       {status.isPending && <p role="status">{t("loading")}</p>}
       {(status.isError || error) && <p role="alert" className="text-sm text-kumo-danger">{t(status.isError ? "agentLoadFailed" : error)}</p>}
       <div hidden={!hasCredential} className="rounded-lg border border-kumo-line bg-kumo-base p-3">
@@ -149,14 +163,23 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                 </form>
               )}
               <div className="rounded-lg border border-kumo-line bg-kumo-base p-3 text-sm">
+                {agent.policy_invalid && <p role="alert" className="mb-2 text-kumo-danger">{t("agentInvalidPolicy")}</p>}
+                <p className="mb-2 text-xs text-kumo-subtle">{t("agentPolicyHelp")}</p>
+                {agent.strategy_id != null && <p className="mb-2 text-xs">{t("agentPolicy")}: #{agent.strategy_id}</p>}
+                <div className="mb-3 flex flex-wrap gap-3 text-sm underline">
+                  <a href="#/strategies">{t("strategies")}</a>
+                  <a href="#/strategy_assignments">{t("strategyAssignments")}</a>
+                </div>
                 <h4 className="font-medium">{t("agentReport")}</h4>
-                <p className="mt-1 text-kumo-subtle">{t(!agent.report ? "agentNoReport" : agent.report.desired_revision === null ? "agentHeartbeat" : "agentNoApplication")}</p>
+                <p className="mt-1 font-medium">{t(agent.report?.management_mode === "managed" ? "agentManagedMode" : agent.report?.management_mode === "observe_only" ? "agentObserveMode" : "agentUnknownMode")}</p>
+                <p className="mt-1 text-kumo-subtle">{t(!agent.report ? "agentNoReport" : !reportCurrent ? "agentPending" : agent.report.desired_revision === null ? "agentHeartbeat" : "agentEvidenceHelp")}</p>
+                {agent.report && <p className="mt-1 text-xs">{t("agentReportedRevision")}: {agent.reported_revision ?? "—"}</p>}
                 {agent.report && <p className="mt-2 break-words">RustDesk: {agent.report.rustdesk_id || "—"} · {agent.report.rustdesk_version || "—"}</p>}
                 {(["approve_mode", "verification_method"] as const).map(key => (
                   <div key={key} className="mt-3 break-words text-xs">
                     <p className="font-medium">{t(key === "approve_mode" ? "agentApproval" : "agentVerification")}</p>
                     <p>{t("agentDesired")}: {agent.desired_settings?.[key] || t("agentUnmanaged")}</p>
-                    <p>{t("agentResult")}: <span>{agent.report?.results[key] || "—"}</span></p>
+                    <p>{t("agentResult")}: <span>{!agent.desired_settings?.[key] ? t("agentUnmanaged") : !reportCurrent ? t("agentPending") : t(outcomeLabels[agent.report?.results[key] || ""] || "agentNoResult")}</span></p>
                   </div>
                 ))}
               </div>

@@ -144,6 +144,125 @@ fn report(uuid: &str, revision: u64, sequence: u64) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn invalid_policy_does_not_hide_enrollment_controls_or_last_report() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, token, uuid) = enroll(&app, 1).await;
+    assign(&db, "device-1", "click").await;
+    request(&app, "GET", "/v1/agent/desired", &token, "", "").await;
+    let body = report(&uuid, 1, 1);
+    request(
+        &app,
+        "POST",
+        "/v1/agent/status",
+        &token,
+        "",
+        &body.to_string(),
+    )
+    .await;
+    assign(&db, "device-1", "invalid-mode").await;
+    let status = store::status(&db, 1).await.unwrap();
+    assert_eq!(status["policy_invalid"], true);
+    assert_eq!(status["policy_pending"], true);
+    assert_eq!(status["report"], body);
+    assert!(status["desired_settings"].is_null());
+}
+
+#[tokio::test]
+async fn mode_metadata_is_optional_strict_and_part_of_retry_identity() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, token, uuid) = enroll(&app, 1).await;
+    assign(&db, "device-1", "click").await;
+    request(&app, "GET", "/v1/agent/desired", &token, "", "").await;
+    let mut body = report(&uuid, 1, 1);
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &body.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    // Old stored bodies and identical old-client retries remain valid.
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &body.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    body["observation_sequence"] = json!(2);
+    body["management_mode"] = json!("managed");
+    body["results"]["approve_mode"] = json!("unverified_cli_match");
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &body.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(store::status(&db, 1).await.unwrap()["report"], body);
+    assert_eq!(
+        store::status(&db, 1).await.unwrap()["reported_revision"],
+        "1"
+    );
+    let contact = store::status(&db, 1).await.unwrap()["last_seen"].clone();
+    assign(&db, "device-1", "password").await;
+    let pending = store::status(&db, 1).await.unwrap();
+    assert_eq!(pending["policy_pending"], true);
+    assert_eq!(pending["desired_settings"]["approve_mode"], "password");
+    assert_eq!(pending["last_seen"], contact);
+    // Restore the original policy for the same-sequence conflict check.
+    assign(&db, "device-1", "click").await;
+    body["management_mode"] = json!("observe_only");
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &body.to_string()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    for invalid in [json!(null), json!("other")] {
+        body["management_mode"] = invalid;
+        assert_eq!(
+            request(
+                &app,
+                "POST",
+                "/v1/agent/status",
+                &token,
+                "",
+                &body.to_string()
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+}
+
+#[tokio::test]
 async fn heartbeat_without_policy_is_ordered_and_survives_assignment_changes() {
     let (app, db) = setup("sqlite::memory:").await;
     let (_, token, uuid) = enroll(&app, 1).await;
