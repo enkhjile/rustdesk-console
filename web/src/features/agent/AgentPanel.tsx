@@ -15,6 +15,7 @@ export interface AgentStatus {
   desired_revision: string;
   reported_revision?: string | null;
   policy_pending?: boolean;
+  policy_invalid?: boolean;
   strategy_id?: number | null;
   desired_settings: Settings | null;
   observation_sequence: string;
@@ -162,6 +163,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                 </form>
               )}
               <div className="rounded-lg border border-kumo-line bg-kumo-base p-3 text-sm">
+                {agent.policy_invalid && <p role="alert" className="mb-2 text-kumo-danger">{t("agentInvalidPolicy")}</p>}
                 <p className="mb-2 text-xs text-kumo-subtle">{t("agentPolicyHelp")}</p>
                 {agent.strategy_id != null && <p className="mb-2 text-xs">{t("agentPolicy")}: #{agent.strategy_id}</p>}
                 <div className="mb-3 flex flex-wrap gap-3 text-sm underline">

@@ -81,6 +81,13 @@ it("hides the old setting result after its policy is removed", async () => {
   expect(screen.queryByText("CLI readback matches (not verified live)")).toBeNull();
 });
 
+it("keeps revocation available when the assigned policy is invalid", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid, policy_invalid: true, policy_pending: true });
+  mount();
+  expect(await screen.findByRole("button", { name: "Revoke access" })).toBeDefined();
+  expect(screen.getByRole("alert").textContent).toContain("Invalid agent settings");
+});
+
 it("shows a no-policy heartbeat distinctly from no report and application results", async () => {
   vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid, last_seen: 1700000000,
     observation_sequence: "1", report: { desired_revision: null, rustdesk_id: "123", rustdesk_version: "1.4.7", applied_revision: null, results: {} },

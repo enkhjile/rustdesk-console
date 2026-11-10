@@ -144,6 +144,30 @@ fn report(uuid: &str, revision: u64, sequence: u64) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn invalid_policy_does_not_hide_enrollment_controls_or_last_report() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, token, uuid) = enroll(&app, 1).await;
+    assign(&db, "device-1", "click").await;
+    request(&app, "GET", "/v1/agent/desired", &token, "", "").await;
+    let body = report(&uuid, 1, 1);
+    request(
+        &app,
+        "POST",
+        "/v1/agent/status",
+        &token,
+        "",
+        &body.to_string(),
+    )
+    .await;
+    assign(&db, "device-1", "invalid-mode").await;
+    let status = store::status(&db, 1).await.unwrap();
+    assert_eq!(status["policy_invalid"], true);
+    assert_eq!(status["policy_pending"], true);
+    assert_eq!(status["report"], body);
+    assert!(status["desired_settings"].is_null());
+}
+
+#[tokio::test]
 async fn mode_metadata_is_optional_strict_and_part_of_retry_identity() {
     let (app, db) = setup("sqlite::memory:").await;
     let (_, token, uuid) = enroll(&app, 1).await;

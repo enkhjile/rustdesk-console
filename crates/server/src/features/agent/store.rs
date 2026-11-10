@@ -258,19 +258,21 @@ pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json:
         Some(peer) => crate::services::strategy::effective_for_peer(db, &peer).await?,
         None => None,
     };
-    let settings = policy
+    let parsed = policy
         .as_ref()
         .map(|p| Settings::from_options(&p.config_options))
-        .transpose()
-        .map_err(|_| Error(StatusCode::SERVICE_UNAVAILABLE, "invalid_agent_strategy"))?
-        .flatten();
+        .transpose();
+    // A bad policy must not hide enrollment status or administrator recovery controls.
+    let policy_invalid = parsed.is_err();
+    let settings = parsed.ok().flatten().flatten();
     let settings_json = serde_json::to_string(&settings)?;
     match row {
         None => Ok(serde_json::Value::Null),
         Some(row) => Ok(serde_json::json!({
             "id": row.id, "peer_row_id": row.peer_row_id, "agent_uuid": row.agent_uuid,
             "revoked": row.revoked, "desired_revision": row.revision,
-            "desired_settings": settings, "policy_pending": settings_json != row.desired_json,
+            "desired_settings": settings, "policy_pending": policy_invalid || settings_json != row.desired_json,
+            "policy_invalid": policy_invalid,
             "strategy_id": policy.map(|p| p.id),
             "observation_sequence": row.sequence, "last_seen": row.last_seen,
             "reported_revision": reported_revision, "report": report
