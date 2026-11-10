@@ -136,6 +136,12 @@ Deploy this server support before the paired agent update. Numeric-revision
 reports from existing agents remain supported. Older agents can poll without a
 policy but will not send heartbeats. No database migration is needed.
 
+The paired [agent #23](https://github.com/enkhjile/rustdesk-agent/pull/23) records
+the isolated heartbeat canary. No-policy contact, identical retry after agent
+and Console restarts, and first assignment passed. The real-browser device-page
+check also passed. The corrected removal/reassignment/revocation VM run is still
+pending; those cases are covered by route tests.
+
 Accepted reports and identical retries return 204. Lower sequences, changed
 content at the same sequence, and revisions that do not match the current
 assignment (including null versus assigned) return 409. Wrong
