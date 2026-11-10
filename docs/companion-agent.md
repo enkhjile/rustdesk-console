@@ -166,10 +166,16 @@ Normal management changes are paired with
 Mode compatibility, retry identity, immediate pending-policy display and policy
 removal are covered by backend/panel tests. A real Chrome test against an isolated
 loopback Console instance confirmed the policy editor link, editing approval mode,
-and pending display without an agent poll. That browser used synthetic reports;
-the separate-host Windows agent test has not run. See the
+and pending display without an agent poll. That browser used synthetic reports.
+The separate-host private two-VM run then passed managed reporting, identical
+retry after a dropped acknowledgement, observe-only upgrades, explicit managed
+recovery, policy removal/reassignment and unattended reboot. The normal CI package
+ran as LocalService against this Console build. Reports retained null applied
+revision and unverified CLI outcomes. Both VMs were restored and stopped, with
+zero network adapters. See the
 [paired validation record](https://github.com/enkhjile/rustdesk-agent/blob/feat/console-managed-settings/docs/validation/console-managed-settings.md)
-for completed checks and remaining VM/password gates. No password management API
+for completed checks and remaining GUI/password connection tests. The official
+password CLI accepted dummy changes under LocalService and LabAdmin; no password management API
 is introduced by this change.
 
 Route/store tests use dummy credentials and SQLite, including a file database
