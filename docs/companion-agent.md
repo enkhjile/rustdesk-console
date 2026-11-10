@@ -123,8 +123,30 @@ and `indeterminate`. This integration deliberately rejects `verified` and non-nu
 applied revisions; no automated live verifier exists yet. The default agent
 reports `unsupported`, which is receipt/observation evidence, not application.
 
+When no policy is assigned, the status route also accepts a heartbeat with
+`desired_revision: null`, `applied_revision: null` and `results: {}`. All other
+required fields, authentication and sequence rules remain the same. The device
+panel identifies this as a heartbeat with no assigned policy and shows reported
+RustDesk metadata and last contact. It does not claim live health or verified
+application. A heartbeat conflicts if a policy was assigned before delivery;
+the agent must poll again. Removing a policy retains the revision watermark;
+subsequent reassignment allocates a higher revision.
+
+Deploy this server support before the paired agent update. Numeric-revision
+reports from existing agents remain supported. Older agents can poll without a
+policy but will not send heartbeats. No database migration is needed.
+
+The paired [agent #23](https://github.com/enkhjile/rustdesk-agent/pull/23) records
+the isolated heartbeat canary. No-policy contact, identical retry after agent
+and Console restarts, and first assignment passed. Policy removal resumed
+heartbeats while retaining revision 1; reassignment produced revision 2.
+Revocation returned 401 without advancing the stored sequence or last contact.
+The real-browser device-page check also passed. Automatic writes stayed disabled,
+before/after detection output matched, and the VM was restored and stopped.
+
 Accepted reports and identical retries return 204. Lower sequences, changed
-content at the same sequence, and stale/unassigned revisions return 409. Wrong
+content at the same sequence, and revisions that do not match the current
+assignment (including null versus assigned) return 409. Wrong
 UUIDs return 403; invalid/unbound/revoked credentials and disabled/deleted devices
 return 401. State survives database reconnects. The reported RustDesk ID is
 metadata only and cannot rebind a device. Admin counter fields are decimal

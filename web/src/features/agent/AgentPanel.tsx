@@ -17,6 +17,7 @@ export interface AgentStatus {
   observation_sequence: string;
   last_seen: number;
   report: {
+    desired_revision: number | null;
     rustdesk_id: string | null;
     rustdesk_version: string | null;
     applied_revision: null;
@@ -149,7 +150,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
               )}
               <div className="rounded-lg border border-kumo-line bg-kumo-base p-3 text-sm">
                 <h4 className="font-medium">{t("agentReport")}</h4>
-                <p className="mt-1 text-kumo-subtle">{t(agent.report ? "agentNoApplication" : "agentNoReport")}</p>
+                <p className="mt-1 text-kumo-subtle">{t(!agent.report ? "agentNoReport" : agent.report.desired_revision === null ? "agentHeartbeat" : "agentNoApplication")}</p>
                 {agent.report && <p className="mt-2 break-words">RustDesk: {agent.report.rustdesk_id || "—"} · {agent.report.rustdesk_version || "—"}</p>}
                 {(["approve_mode", "verification_method"] as const).map(key => (
                   <div key={key} className="mt-3 break-words text-xs">

@@ -144,6 +144,236 @@ fn report(uuid: &str, revision: u64, sequence: u64) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn heartbeat_without_policy_is_ordered_and_survives_assignment_changes() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, token, uuid) = enroll(&app, 1).await;
+    let mut heartbeat = report(&uuid, 1, 1);
+    heartbeat["desired_revision"] = json!(null);
+    heartbeat["results"] = json!({});
+    for _ in 0..2 {
+        assert_eq!(
+            request(
+                &app,
+                "POST",
+                "/v1/agent/status",
+                &token,
+                "",
+                &heartbeat.to_string()
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+    }
+    let status = store::status(&db, 1).await.unwrap();
+    assert_eq!(status["report"], heartbeat);
+    assert_eq!(status["desired_revision"], "0");
+    assert!(status["last_seen"].as_i64().unwrap() > 0);
+    let mut changed = heartbeat.clone();
+    changed["rustdesk_id"] = json!("123");
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &changed.to_string()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let strategy = assign(&db, "device-1", "click").await;
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &report(&uuid, 1, 2).to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    crate::services::strategy::set_status(&db, strategy, false)
+        .await
+        .unwrap();
+    heartbeat["observation_sequence"] = json!(3);
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        store::status(&db, 1).await.unwrap()["desired_revision"],
+        "1"
+    );
+    heartbeat["observation_sequence"] = json!(1);
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+}
+
+#[tokio::test]
+async fn heartbeats_reject_invalid_payloads_and_retain_order_after_database_reopen() {
+    let path = std::env::temp_dir().join(format!("console-heartbeat-{}.db", uuid::Uuid::new_v4()));
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        path.to_string_lossy().replace('\\', "/")
+    );
+    let (app, db) = setup(&url).await;
+    let (id, token, uuid) = enroll(&app, 1).await;
+    let mut heartbeat = report(&uuid, 1, 5);
+    heartbeat["desired_revision"] = json!(null);
+    heartbeat["results"] = json!({});
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let before = store::status(&db, 1).await.unwrap();
+    for (key, value, expected) in [
+        (
+            "results",
+            json!({"approve_mode":"unsupported"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        ("applied_revision", json!(1), StatusCode::BAD_REQUEST),
+        ("observation_sequence", json!(0), StatusCode::BAD_REQUEST),
+        ("desired_revision", json!(1), StatusCode::CONFLICT),
+        (
+            "agent_uuid",
+            json!(uuid::Uuid::new_v4().to_string()),
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        let mut bad = heartbeat.clone();
+        bad[key] = value;
+        assert_eq!(
+            request(
+                &app,
+                "POST",
+                "/v1/agent/status",
+                &token,
+                "",
+                &bad.to_string()
+            )
+            .await
+            .0,
+            expected
+        );
+        assert_eq!(store::status(&db, 1).await.unwrap(), before);
+    }
+    let mut missing = heartbeat.clone();
+    missing.as_object_mut().unwrap().remove("desired_revision");
+    for bad in [
+        missing.to_string(),
+        heartbeat.to_string().replace(
+            "\"desired_revision\":null",
+            "\"desired_revision\":null,\"desired_revision\":null",
+        ),
+    ] {
+        assert_eq!(
+            request(&app, "POST", "/v1/agent/status", &token, "", &bad)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    drop(app);
+    db.close().await.unwrap();
+    let db = Database::connect(&url).await.unwrap();
+    let app = routes().with_state(crate::http::api::deployment_tests::test_state(db.clone()));
+    assert_eq!(store::status(&db, 1).await.unwrap(), before);
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    heartbeat["observation_sequence"] = json!(4);
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    store::revoke(&db, id).await.unwrap();
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &token,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    drop(app);
+    db.close().await.unwrap();
+    std::fs::remove_file(path).unwrap();
+}
+
+#[tokio::test]
 async fn rotation_recovers_credentials_without_resetting_identity_or_history() {
     let (app, db) = setup("sqlite::memory:").await;
     let (id, old, uuid) = enroll(&app, 1).await;
