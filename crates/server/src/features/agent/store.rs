@@ -218,11 +218,11 @@ pub async fn report(db: &DatabaseConnection, token: &str, report: Report) -> Res
     if row.agent_uuid.as_deref() != Some(&report.agent_uuid) {
         return Err(Error(StatusCode::FORBIDDEN, "agent_uuid_mismatch"));
     }
-    let wanted = desired(&tx, &mut row).await?.ok_or_else(conflict)?;
-    if report.desired_revision != wanted.revision {
+    let wanted = desired(&tx, &mut row).await?;
+    if report.desired_revision != wanted.as_ref().map(|state| state.revision) {
         return Err(conflict());
     }
-    if !report.valid_for(&wanted.settings) {
+    if !report.valid_for(wanted.as_ref().map(|state| &state.settings)) {
         return Err(Error(StatusCode::BAD_REQUEST, "invalid_agent_report"));
     }
     let body = serde_json::to_string(&report)?;

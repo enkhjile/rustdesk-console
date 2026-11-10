@@ -35,6 +35,17 @@ async function issue() {
   await screen.findByDisplayValue(secret);
 }
 
+it("shows a no-policy heartbeat distinctly from no report and application results", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid, last_seen: 1700000000,
+    observation_sequence: "1", report: { desired_revision: null, rustdesk_id: "123", rustdesk_version: "1.4.7", applied_revision: null, results: {} },
+  });
+  mount();
+  expect(await screen.findByText("Heartbeat received — no policy assigned")).toBeDefined();
+  expect(screen.queryByText("No report received")).toBeNull();
+  expect(screen.queryByText("Online")).toBeNull();
+  expect(screen.queryByText("No verified application")).toBeNull();
+});
+
 it("enrolls by Console row ID and retains the returned credential only until dismissed", async () => {
   await issue();
   expect(apiPost).toHaveBeenCalledWith("/api/admin/agent/create", { peer_row_id: 42 });

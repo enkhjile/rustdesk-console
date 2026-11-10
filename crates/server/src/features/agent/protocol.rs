@@ -102,20 +102,24 @@ pub struct Report {
     pub rustdesk_id: Option<String>,
     #[serde(deserialize_with = "nullable")]
     pub rustdesk_version: Option<String>,
-    pub desired_revision: u64,
+    #[serde(deserialize_with = "nullable")]
+    pub desired_revision: Option<u64>,
     pub observation_sequence: u64,
     #[serde(deserialize_with = "nullable")]
     pub applied_revision: Option<u64>,
     pub results: Results,
 }
 impl Report {
-    pub fn valid_for(&self, settings: &Settings) -> bool {
+    pub fn valid_for(&self, settings: Option<&Settings>) -> bool {
         self.schema_version == 1
-            && self.desired_revision > 0
+            && self.desired_revision.is_none_or(|revision| revision > 0)
+            && self.desired_revision.is_some() == settings.is_some()
             && self.observation_sequence > 0
             && self.applied_revision.is_none()
-            && self.results.approve_mode.is_some() == settings.approve_mode.is_some()
-            && self.results.verification_method.is_some() == settings.verification_method.is_some()
+            && self.results.approve_mode.is_some()
+                == settings.is_some_and(|s| s.approve_mode.is_some())
+            && self.results.verification_method.is_some()
+                == settings.is_some_and(|s| s.verification_method.is_some())
             && self.rustdesk_id.as_ref().is_none_or(|s| s.len() <= 128)
             && self
                 .rustdesk_version
@@ -157,8 +161,13 @@ mod tests {
         };
         assert!(serde_json::from_value::<Report>(body.clone())
             .unwrap()
-            .valid_for(&settings));
-        for field in ["rustdesk_id", "rustdesk_version", "applied_revision"] {
+            .valid_for(Some(&settings)));
+        for field in [
+            "rustdesk_id",
+            "rustdesk_version",
+            "applied_revision",
+            "desired_revision",
+        ] {
             let mut missing = body.clone();
             missing.as_object_mut().unwrap().remove(field);
             assert!(serde_json::from_value::<Report>(missing).is_err());
@@ -172,6 +181,6 @@ mod tests {
         applied["applied_revision"] = json!(1);
         assert!(!serde_json::from_value::<Report>(applied)
             .unwrap()
-            .valid_for(&settings));
+            .valid_for(Some(&settings)));
     }
 }
