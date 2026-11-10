@@ -102,14 +102,32 @@ pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
 }
 
 pub async fn revoke(db: &DatabaseConnection, id: i32) -> Result<()> {
-    if agent::Entity::find_by_id(id).one(db).await?.is_none() {
+    let tx = db.begin().await?;
+    lock_id(&tx, id).await?;
+    if agent::Entity::find_by_id(id).one(&tx).await?.is_none() {
         return Err(Error(StatusCode::NOT_FOUND, "agent_not_found"));
     }
     agent::Entity::update_many()
         .col_expr(agent::Column::Revoked, Expr::value(true))
         .filter(agent::Column::Id.eq(id))
-        .exec(db)
+        .exec(&tx)
         .await?;
+    use ::entity::agent_password as password;
+    password::Entity::update_many()
+        .col_expr(
+            password::Column::Ciphertext,
+            Expr::value(Option::<String>::None),
+        )
+        .filter(password::Column::AgentId.eq(id))
+        .exec(&tx)
+        .await?;
+    password::Entity::update_many()
+        .col_expr(password::Column::Status, Expr::value("expired"))
+        .filter(password::Column::AgentId.eq(id))
+        .filter(password::Column::Status.eq("queued"))
+        .exec(&tx)
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -132,7 +150,7 @@ pub async fn rotate(db: &DatabaseConnection, id: i32) -> Result<String> {
 // A no-op UPDATE obtains the database's write/row lock (including SQLite).
 // All protocol reads and mutations follow it in the same transaction, so two
 // requests cannot reuse a revision/sequence with different content.
-async fn lock_id(tx: &DatabaseTransaction, id: i32) -> Result<()> {
+pub(super) async fn lock_id(tx: &DatabaseTransaction, id: i32) -> Result<()> {
     agent::Entity::update_many()
         .col_expr(agent::Column::Id, Expr::col(agent::Column::Id).into())
         .filter(agent::Column::Id.eq(id))
@@ -140,7 +158,7 @@ async fn lock_id(tx: &DatabaseTransaction, id: i32) -> Result<()> {
         .await?;
     Ok(())
 }
-async fn authenticate(
+pub(super) async fn authenticate(
     db: &DatabaseConnection,
     token: &str,
 ) -> Result<(DatabaseTransaction, agent::Model)> {

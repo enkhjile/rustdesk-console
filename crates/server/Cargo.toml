@@ -37,6 +37,7 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 rand = { workspace = true }
 ring = "0.17.14"
+zeroize = { version = "1", features = ["serde"] }
 uuid = { workspace = true }
 clap = { workspace = true }
 rust-embed = { workspace = true }

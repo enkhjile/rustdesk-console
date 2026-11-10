@@ -136,6 +136,7 @@ async fn create_tables(db: &DatabaseConnection) -> anyhow::Result<()> {
     }
 
     create!(entity::companion_agent::Entity);
+    create!(entity::agent_password::Entity);
     create!(version::Entity);
     create!(user::Entity);
     create!(user_token::Entity);

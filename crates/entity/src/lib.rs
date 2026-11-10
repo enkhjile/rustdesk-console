@@ -4,6 +4,7 @@
 //! keys are reproduced exactly via `#[serde(rename = ...)]` where they differ,
 //! so the wire format is identical to the original server.
 
+pub mod agent_password;
 pub mod companion_agent;
 pub mod datetime;
 pub mod developer_key;
@@ -12,9 +13,9 @@ pub mod active_connection;
 pub mod address_book;
 pub mod address_book_collection;
 pub mod address_book_collection_rule;
+pub mod audit_alarm;
 pub mod audit_conn;
 pub mod audit_file;
-pub mod audit_alarm;
 pub mod audit_receipt;
 pub mod deployment_event;
 pub mod deployment_token;
