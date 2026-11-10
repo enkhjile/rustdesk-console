@@ -138,9 +138,11 @@ policy but will not send heartbeats. No database migration is needed.
 
 The paired [agent #23](https://github.com/enkhjile/rustdesk-agent/pull/23) records
 the isolated heartbeat canary. No-policy contact, identical retry after agent
-and Console restarts, and first assignment passed. The real-browser device-page
-check also passed. The corrected removal/reassignment/revocation VM run is still
-pending; those cases are covered by route tests.
+and Console restarts, and first assignment passed. Policy removal resumed
+heartbeats while retaining revision 1; reassignment produced revision 2.
+Revocation returned 401 without advancing the stored sequence or last contact.
+The real-browser device-page check also passed. Automatic writes stayed disabled,
+before/after detection output matched, and the VM was restored and stopped.
 
 Accepted reports and identical retries return 204. Lower sequences, changed
 content at the same sequence, and revisions that do not match the current
