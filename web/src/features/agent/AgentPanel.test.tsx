@@ -35,6 +35,40 @@ async function issue() {
   await screen.findByDisplayValue(secret);
 }
 
+it("shows managed readback without claiming independent verification", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
+    desired_revision: "7", reported_revision: "7", desired_settings: { approve_mode: "click" },
+    report: { desired_revision: 7, management_mode: "managed", results: { approve_mode: "unverified_cli_match" } },
+  });
+  mount();
+  expect(await screen.findByText("Managed")).toBeDefined();
+  expect(screen.getByText("CLI readback matches (not verified live)")).toBeDefined();
+  expect(screen.queryByText("Automatic settings application is disabled. Reports describe observations, not verified application.")).toBeNull();
+});
+
+it("does not present an old successful result as the current policy outcome", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
+    desired_revision: "9007199254740993", reported_revision: "9007199254740992", desired_settings: { approve_mode: "password" },
+    report: { desired_revision: 9007199254740992, management_mode: "observe_only", results: { approve_mode: "unverified_cli_match" } },
+  });
+  mount();
+  expect(await screen.findByText("Observe only")).toBeDefined();
+  expect(screen.getAllByText("Pending current policy").length).toBeGreaterThan(0);
+  expect(screen.queryByText("CLI readback matches (not verified live)")).toBeNull();
+});
+
+it("shows an edited policy as pending before the agent fetches its next revision", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
+    desired_revision: "7", reported_revision: "7", policy_pending: true,
+    desired_settings: { approve_mode: "password" },
+    report: { desired_revision: 7, management_mode: "managed", results: { approve_mode: "unverified_cli_match" } },
+  });
+  mount();
+  await screen.findByText("Managed");
+  expect(screen.getAllByText("Pending current policy").length).toBeGreaterThan(0);
+  expect(screen.queryByText("CLI readback matches (not verified live)")).toBeNull();
+});
+
 it("shows a no-policy heartbeat distinctly from no report and application results", async () => {
   vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid, last_seen: 1700000000,
     observation_sequence: "1", report: { desired_revision: null, rustdesk_id: "123", rustdesk_version: "1.4.7", applied_revision: null, results: {} },
@@ -106,8 +140,8 @@ it("shows status and exact counters without claiming settings were applied or th
   mount();
   await screen.findByText("18446744073709551615");
   expect(screen.getByText("9007199254740993")).toBeDefined();
-  expect(screen.getByText("unsupported")).toBeDefined();
-  expect(screen.getByText("No verified application")).toBeDefined();
+  expect(screen.getByText("Mode unknown — awaiting a capable agent report")).toBeDefined();
+  expect(screen.getAllByText("Pending current policy").length).toBeGreaterThan(0);
   expect(screen.queryByText("Online")).toBeNull();
 });
 
@@ -191,3 +225,4 @@ it("discards a late credential response after the panel closes", async () => {
   await screen.findByRole("button", { name: "Enroll agent" });
   expect(screen.queryByDisplayValue(secret)).toBeNull();
 });
+

@@ -78,6 +78,13 @@ pub enum Outcome {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagementMode {
+    ObserveOnly,
+    Managed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Results {
     #[serde(
@@ -108,6 +115,12 @@ pub struct Report {
     #[serde(deserialize_with = "nullable")]
     pub applied_revision: Option<u64>,
     pub results: Results,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present"
+    )]
+    pub management_mode: Option<ManagementMode>,
 }
 impl Report {
     pub fn valid_for(&self, settings: Option<&Settings>) -> bool {

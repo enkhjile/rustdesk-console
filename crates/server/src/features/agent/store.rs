@@ -242,14 +242,38 @@ pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json:
         .filter(agent::Column::PeerRowId.eq(peer_id))
         .one(db)
         .await?;
+    if row.is_none() {
+        return Ok(serde_json::Value::Null);
+    }
+    let report = row
+        .as_ref()
+        .and_then(|r| r.report_json.as_deref())
+        .map(serde_json::from_str::<serde_json::Value>)
+        .transpose()?;
+    let reported_revision = report
+        .as_ref()
+        .and_then(|r| r["desired_revision"].as_u64())
+        .map(|r| r.to_string());
+    let policy = match peer::Entity::find_by_id(peer_id).one(db).await? {
+        Some(peer) => crate::services::strategy::effective_for_peer(db, &peer).await?,
+        None => None,
+    };
+    let settings = policy
+        .as_ref()
+        .map(|p| Settings::from_options(&p.config_options))
+        .transpose()
+        .map_err(|_| Error(StatusCode::SERVICE_UNAVAILABLE, "invalid_agent_strategy"))?
+        .flatten();
+    let settings_json = serde_json::to_string(&settings)?;
     match row {
         None => Ok(serde_json::Value::Null),
         Some(row) => Ok(serde_json::json!({
             "id": row.id, "peer_row_id": row.peer_row_id, "agent_uuid": row.agent_uuid,
             "revoked": row.revoked, "desired_revision": row.revision,
-            "desired_settings": serde_json::from_str::<serde_json::Value>(&row.desired_json)?,
+            "desired_settings": settings, "policy_pending": settings_json != row.desired_json,
+            "strategy_id": policy.map(|p| p.id),
             "observation_sequence": row.sequence, "last_seen": row.last_seen,
-            "report": row.report_json.as_deref().map(serde_json::from_str::<serde_json::Value>).transpose()?
+            "reported_revision": reported_revision, "report": report
         })),
     }
 }
