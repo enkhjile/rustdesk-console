@@ -19,6 +19,13 @@ fn now() -> i64 {
 fn conflict() -> Error {
     Error(StatusCode::CONFLICT, "agent_state_conflict")
 }
+fn enrollment_error(error: DbErr) -> Error {
+    if matches!(error.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) {
+        conflict()
+    } else {
+        error.into()
+    }
+}
 fn unauthorized() -> Error {
     Error(StatusCode::UNAUTHORIZED, "invalid_agent_credential")
 }
@@ -65,7 +72,8 @@ pub async fn create(db: &DatabaseConnection, peer_row_id: i32) -> Result<(i32, S
         ..Default::default()
     }
     .insert(db)
-    .await?;
+    .await
+    .map_err(enrollment_error)?;
     Ok((row.id, credential))
 }
 
@@ -92,7 +100,7 @@ pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
     }
     let mut row: agent::ActiveModel = row.into();
     row.agent_uuid = Set(Some(uuid));
-    row.update(&tx).await?;
+    row.update(&tx).await.map_err(enrollment_error)?;
     tx.commit().await?;
     Ok(())
 }

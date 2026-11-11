@@ -154,6 +154,8 @@ async fn rotate(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod uniqueness_tests;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -6,11 +6,11 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    #[sea_orm(unique_key)]
+    #[sea_orm(unique)]
     pub peer_row_id: i32,
-    #[sea_orm(unique_key)]
+    #[sea_orm(unique)]
     pub agent_uuid: Option<String>,
-    #[sea_orm(unique_key)]
+    #[sea_orm(unique)]
     pub token_hash: String,
     pub revoked: bool,
     // Decimal strings preserve the full protocol u64 range on every supported DB.
