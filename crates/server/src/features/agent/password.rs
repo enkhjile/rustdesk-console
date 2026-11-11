@@ -1,6 +1,6 @@
 //! Dedicated encrypted password operations, never normal policies/reports.
 use super::{store, Error};
-use ::entity::{agent_password as operation, companion_agent as agent, peer};
+use ::entity::{agent_password as operation, peer};
 use axum::http::StatusCode;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ring::{
@@ -95,11 +95,7 @@ pub async fn create(
         return Err(Error(StatusCode::BAD_REQUEST, "invalid_rustdesk_password"));
     }
     let tx = db.begin().await?;
-    store::lock_id(&tx, id).await?;
-    let agent = agent::Entity::find_by_id(id)
-        .one(&tx)
-        .await?
-        .ok_or(Error(StatusCode::NOT_FOUND, "agent_not_found"))?;
+    let agent = store::lock_agent(&tx, id).await?;
     let uuid = agent.agent_uuid.as_deref().ok_or_else(conflict)?;
     if agent.revoked
         || peer::Entity::find_by_id(agent.peer_row_id)

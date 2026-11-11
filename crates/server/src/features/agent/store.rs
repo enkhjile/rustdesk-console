@@ -77,11 +77,7 @@ pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
     }
     let uuid = parsed.hyphenated().to_string();
     let tx = db.begin().await?;
-    lock_id(&tx, id).await?;
-    let row = agent::Entity::find_by_id(id)
-        .one(&tx)
-        .await?
-        .ok_or(Error(StatusCode::NOT_FOUND, "agent_not_found"))?;
+    let row = lock_agent(&tx, id).await?;
     if row.revoked || row.agent_uuid.as_ref().is_some_and(|v| v != &uuid) {
         return Err(conflict());
     }
@@ -103,10 +99,7 @@ pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
 
 pub async fn revoke(db: &DatabaseConnection, id: i32) -> Result<()> {
     let tx = db.begin().await?;
-    lock_id(&tx, id).await?;
-    if agent::Entity::find_by_id(id).one(&tx).await?.is_none() {
-        return Err(Error(StatusCode::NOT_FOUND, "agent_not_found"));
-    }
+    lock_agent(&tx, id).await?;
     agent::Entity::update_many()
         .col_expr(agent::Column::Revoked, Expr::value(true))
         .filter(agent::Column::Id.eq(id))
@@ -133,11 +126,7 @@ pub async fn revoke(db: &DatabaseConnection, id: i32) -> Result<()> {
 
 pub async fn rotate(db: &DatabaseConnection, id: i32) -> Result<String> {
     let tx = db.begin().await?;
-    lock_id(&tx, id).await?;
-    let row = agent::Entity::find_by_id(id)
-        .one(&tx)
-        .await?
-        .ok_or(Error(StatusCode::NOT_FOUND, "agent_not_found"))?;
+    let row = lock_agent(&tx, id).await?;
     let credential = new_credential();
     let mut row: agent::ActiveModel = row.into();
     row.token_hash = Set(hash(&credential));
@@ -150,13 +139,16 @@ pub async fn rotate(db: &DatabaseConnection, id: i32) -> Result<String> {
 // A no-op UPDATE obtains the database's write/row lock (including SQLite).
 // All protocol reads and mutations follow it in the same transaction, so two
 // requests cannot reuse a revision/sequence with different content.
-pub(super) async fn lock_id(tx: &DatabaseTransaction, id: i32) -> Result<()> {
+pub(super) async fn lock_agent(tx: &DatabaseTransaction, id: i32) -> Result<agent::Model> {
     agent::Entity::update_many()
         .col_expr(agent::Column::Id, Expr::col(agent::Column::Id).into())
         .filter(agent::Column::Id.eq(id))
         .exec(tx)
         .await?;
-    Ok(())
+    agent::Entity::find_by_id(id)
+        .one(tx)
+        .await?
+        .ok_or(Error(StatusCode::NOT_FOUND, "agent_not_found"))
 }
 pub(super) async fn authenticate(
     db: &DatabaseConnection,
@@ -256,16 +248,16 @@ pub async fn report(db: &DatabaseConnection, token: &str, report: Report) -> Res
 }
 
 pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json::Value> {
-    let row = agent::Entity::find()
+    let Some(row) = agent::Entity::find()
         .filter(agent::Column::PeerRowId.eq(peer_id))
         .one(db)
-        .await?;
-    if row.is_none() {
+        .await?
+    else {
         return Ok(serde_json::Value::Null);
-    }
+    };
     let report = row
-        .as_ref()
-        .and_then(|r| r.report_json.as_deref())
+        .report_json
+        .as_deref()
         .map(serde_json::from_str::<serde_json::Value>)
         .transpose()?;
     let reported_revision = report
@@ -284,9 +276,7 @@ pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json:
     let policy_invalid = parsed.is_err();
     let settings = parsed.ok().flatten().flatten();
     let settings_json = serde_json::to_string(&settings)?;
-    match row {
-        None => Ok(serde_json::Value::Null),
-        Some(row) => Ok(serde_json::json!({
+    Ok(serde_json::json!({
             "id": row.id, "peer_row_id": row.peer_row_id, "agent_uuid": row.agent_uuid,
             "revoked": row.revoked, "desired_revision": row.revision,
             "desired_settings": settings, "policy_pending": policy_invalid || settings_json != row.desired_json,
@@ -294,6 +284,5 @@ pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json:
             "strategy_id": policy.map(|p| p.id),
             "observation_sequence": row.sequence, "last_seen": row.last_seen,
             "reported_revision": reported_revision, "report": report
-        })),
-    }
+    }))
 }
