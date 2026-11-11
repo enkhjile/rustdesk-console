@@ -12,22 +12,6 @@ separate [password management API and device controls](agent-passwords.md).
 Password delivery requires the server encryption key and a capable managed agent;
 passwords are never included in settings policies or reports.
 
-## Enrollment uniqueness upgrade
-
-Schema migration 275 adds unique indexes for the Console device row ID, non-null
-agent UUID and credential hash. Multiple unbound devices may still have null UUIDs.
-Clean upgrades preserve enrollment, counters, reports and password operations;
-the migration is safe to rerun after a partial index installation.
-
-Stop all Console instances and back up the database before upgrading. If an older
-database contains duplicate identities, startup stops with the affected column
-name and does not mark the migration complete. It does not select a winning
-credential, delete rows, or reset state. Keep Console stopped while an administrator
-reconciles the duplicate enrollments against the actual devices and retained
-history, then retry startup. Revoking one duplicate is insufficient: the other
-credential could remain valid, and revoked rows still participate in uniqueness.
-Do not run an older Console binary concurrently with the migration.
-
 ## Provision one device
 
 Administrators can open **Devices → Device info → Companion agent** to enroll

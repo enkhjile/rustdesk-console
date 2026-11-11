@@ -35,9 +35,7 @@ use crate::support::webclient_config::{WebClientConfig, WebClientConfigStore};
 use crate::support::{external_webclient::ExternalWebClient, password};
 
 /// The schema version the binary expects (mirrors Go `DatabaseVersion`).
-pub const DATABASE_VERSION: i32 = 275;
-
-mod agent_migration;
+pub const DATABASE_VERSION: i32 = 274;
 
 type MigrationFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
 type MigrationFn = for<'a> fn(&'a DatabaseConnection, &'a Config) -> MigrationFuture<'a>;
@@ -74,11 +72,6 @@ const SCHEMA_MIGRATIONS: &[SchemaMigration] = &[
         version: 274,
         name: "developer device group notes",
         apply: migration_274,
-    },
-    SchemaMigration {
-        version: 275,
-        name: "companion agent identity uniqueness",
-        apply: migration_275,
     },
 ];
 
@@ -210,10 +203,6 @@ fn migration_274<'a>(db: &'a DatabaseConnection, _config: &'a Config) -> Migrati
         }
         Ok(())
     })
-}
-
-fn migration_275<'a>(db: &'a DatabaseConnection, _config: &'a Config) -> MigrationFuture<'a> {
-    Box::pin(agent_migration::migrate(db))
 }
 
 async fn migrate_271_legacy_columns(
@@ -652,9 +641,6 @@ pub async fn build_state(config: Config, config_path: PathBuf) -> anyhow::Result
 }
 
 #[cfg(test)]
-mod agent_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use sea_orm::{Database, DbBackend, EntityTrait};
@@ -740,7 +726,7 @@ mod tests {
             .map(|row| row.version)
             .collect::<Vec<_>>();
 
-        assert_eq!(versions, vec![271, 272, 273, 274, DATABASE_VERSION]);
+        assert_eq!(versions, vec![271, 272, 273, DATABASE_VERSION]);
     }
 
     #[tokio::test]
