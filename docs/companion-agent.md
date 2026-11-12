@@ -7,6 +7,11 @@ the agent protocol, and persists its latest report. A normally installed managed
 agent applies the two supported settings; an observe-only agent only reports.
 No special build or RustDesk client modification is required.
 
+Administrators can also queue explicit permanent-password changes through the
+separate [password management API and device controls](agent-passwords.md).
+Password delivery requires the server encryption key and a capable managed agent;
+passwords are never included in settings policies or reports.
+
 ## Provision one device
 
 Administrators can open **Devices → Device info → Companion agent** to enroll
@@ -174,9 +179,8 @@ ran as LocalService against this Console build. Reports retained null applied
 revision and unverified CLI outcomes. Both VMs were restored and stopped, with
 zero network adapters. See the
 [paired validation record](https://github.com/enkhjile/rustdesk-agent/blob/feat/console-managed-settings/docs/validation/console-managed-settings.md)
-for completed checks and remaining GUI/password connection tests. The official
-password CLI accepted dummy changes under LocalService and LabAdmin; no password management API
-is introduced by this change.
+for that validation run. Subsequent password API and connection-test results are
+documented in [password management](agent-passwords.md).
 
 Route/store tests use dummy credentials and SQLite, including a file database
 reopened between requests and concurrent requests through independent database
@@ -202,4 +206,7 @@ advanced to 4; results stayed unsupported. The isolated VM was restored afterwar
 MySQL/PostgreSQL transaction behavior, a network/reverse-proxy deployment,
 unattended reboot with Console and operational
 audit retention still need validation or implementation before rollout.
-Production automatic application remains disabled.
+Normally installed managed agents apply assigned supported settings. Use
+observe-only mode when changes are not wanted; removing a policy leaves existing
+RustDesk settings unchanged. No production deployment was performed by these
+validation runs.

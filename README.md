@@ -30,7 +30,8 @@ with its own brand-new admin web interface (not the original web project).
 - **Developer access**: scoped, expiring API keys, Rust/Go/Node.js SDK examples,
   and public OpenAPI at `/api/v1/openapi.json`. See [the integration guide](docs/developer-access.en.md).
 - **Companion agent integration (this fork)**: per-device enrollment, strategy
-  polling and durable status reports. Agent writes remain disabled; see the
+  polling, durable status reports, managed approval/password-mode settings and
+  explicit permanent-password changes. Observe-only agents do not write; see the
   [setup and limitations](docs/companion-agent.md).
 - **Server commands**: send commands to your RustDesk ID/relay server from the console.
 - **Geo relay routing**: manage ordered country/city/subdivision/ASN/network rules and
