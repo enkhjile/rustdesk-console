@@ -38,6 +38,10 @@ impl IntoResponse for Error {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route(
+            "/v1/agent/enroll",
+            post(device_enroll).get(enrollment_ready),
+        )
         .route("/v1/agent/desired", get(desired))
         .route("/v1/agent/status", post(status))
         .route("/v1/agent/password/claim", post(password_claim))
@@ -91,6 +95,27 @@ struct Create {
 #[serde(deny_unknown_fields)]
 struct Bind {
     agent_uuid: String,
+}
+async fn device_enroll(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, Error> {
+    let input: Bind = parse(&body)?;
+    store::enroll(&state.db, token(&headers), &input.agent_uuid).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn enrollment_ready(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<StatusCode, Error> {
+    Ok(
+        if store::enrollment_ready(&state.db, token(&headers)).await? {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::ACCEPTED
+        },
+    )
 }
 async fn create(
     State(state): State<AppState>,

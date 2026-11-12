@@ -92,6 +92,139 @@ async fn request(
         },
     )
 }
+#[tokio::test]
+async fn device_enrollment_binds_once_and_retries_without_resetting_state() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (id, credential) = store::create(&db, 1).await.unwrap();
+    let uuid = uuid::Uuid::new_v4().to_string();
+    let body = json!({"agent_uuid":uuid}).to_string();
+    for token in ["", "session-1"] {
+        assert_eq!(
+            request(&app, "POST", "/v1/agent/enroll", token, "", &body)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        request(&app, "GET", "/v1/agent/desired", &credential, "", "")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &credential, "", &body)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, "GET", "/v1/agent/enroll", &credential, "", "")
+            .await
+            .0,
+        StatusCode::ACCEPTED
+    );
+    let heartbeat = json!({"schema_version":1,"agent_uuid":uuid,"rustdesk_id":null,"rustdesk_version":null,"desired_revision":null,"applied_revision":null,"observation_sequence":1,"results":{}});
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            "/v1/agent/status",
+            &credential,
+            "",
+            &heartbeat.to_string()
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, "GET", "/v1/agent/enroll", &credential, "", "")
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let before = companion_agent::Entity::find_by_id(id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &credential, "", &body)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        companion_agent::Entity::find_by_id(id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap(),
+        before
+    );
+    let other = json!({"agent_uuid":uuid::Uuid::new_v4()}).to_string();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &credential, "", &other)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    for invalid in [
+        r#"{"agent_uuid":"invalid"}"#.to_owned(),
+        format!(r#"{{"agent_uuid":"{uuid}","extra":true}}"#),
+    ] {
+        assert_eq!(
+            request(&app, "POST", "/v1/agent/enroll", &credential, "", &invalid)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    store::revoke(&db, id).await.unwrap();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &credential, "", &body)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn device_enrollment_rejects_disabled_devices_and_duplicate_uuids() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, first) = store::create(&db, 1).await.unwrap();
+    let (_, second) = store::create(&db, 2).await.unwrap();
+    let body = json!({"agent_uuid":uuid::Uuid::new_v4()}).to_string();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &first, "", &body)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &second, "", &body)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    peer::ActiveModel {
+        row_id: Set(2),
+        status: Set(0),
+        ..Default::default()
+    }
+    .update(&db)
+    .await
+    .unwrap();
+    let body = json!({"agent_uuid":uuid::Uuid::new_v4()}).to_string();
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/enroll", &second, "", &body)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
 async fn enroll(app: &Router, peer: i32) -> (i32, String, String) {
     let (status, body) = request(
         app,

@@ -4,6 +4,38 @@ use axum::http::StatusCode;
 use sea_orm::*;
 
 #[tokio::test]
+async fn concurrent_self_enrollment_cannot_rebind_a_device() {
+    let (_, db) = setup("sqlite::memory:").await;
+    let (id, token) = store::create(&db, 1).await.unwrap();
+    let a = uuid::Uuid::new_v4().to_string();
+    let b = uuid::Uuid::new_v4().to_string();
+    let (first, second) = tokio::join!(
+        store::enroll(&db, &token, &a),
+        store::enroll(&db, &token, &b)
+    );
+    let winner = match (first, second) {
+        (Ok(()), Err(error)) => {
+            assert_eq!(error.0, StatusCode::CONFLICT);
+            a
+        }
+        (Err(error), Ok(())) => {
+            assert_eq!(error.0, StatusCode::CONFLICT);
+            b
+        }
+        _ => panic!("exactly one UUID must bind"),
+    };
+    assert_eq!(
+        agent::Entity::find_by_id(id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .agent_uuid,
+        Some(winner)
+    );
+}
+
+#[tokio::test]
 async fn concurrent_binding_cannot_share_an_agent_uuid() {
     let (_, db) = setup("sqlite::memory:").await;
     let (first, _) = store::create(&db, 1).await.unwrap();

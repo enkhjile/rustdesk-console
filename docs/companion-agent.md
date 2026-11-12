@@ -1,5 +1,30 @@
 # Windows companion agent integration
 
+## Guided Windows setup
+
+Issue a credential for the existing device from **Device info → Companion agent**.
+On Windows, open `rustdesk-agent-setup.exe` and enter this Console's HTTPS origin
+and device credential. Setup binds its generated UUID and completes local setup;
+manual UUID copying is only needed for older agents. Install this Console version
+before using the new setup executable. No database migration is required.
+
+`POST /v1/agent/enroll` uses the device Bearer credential and a strict
+`{"agent_uuid":"<UUID v4>"}` body. It binds only the token's own enabled device,
+returns 204 for the first binding and identical retries, and rejects rebinding or
+UUID collisions with 409. Revoked, unknown and administrator credentials cannot
+enroll. Normal polling continues to reject unbound credentials. Binding and token
+rotation/revocation use the same database write lock.
+
+`GET /v1/agent/enroll` returns 202 until the authenticated bound device has a stored
+report, then 204. This confirms historical report receipt, not freshness after an
+upgrade or live RustDesk behavior. Neither enrollment route updates last contact.
+Both use the existing body limit and `Cache-Control: no-store` response policy.
+
+The [isolated installer validation](https://github.com/enkhjile/rustdesk-agent/blob/codex/guided-installer/docs/validation/guided-setup.md)
+records setup and upgrade behavior against this Console implementation.
+
+## Existing management integration
+
 This fork implements the first server integration for
 [rustdesk-agent](https://github.com/enkhjile/rustdesk-agent). It registers one
 agent per existing Console device, projects the device's effective strategy into

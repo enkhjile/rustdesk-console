@@ -162,6 +162,17 @@ pub(super) async fn authenticate(
     db: &DatabaseConnection,
     token: &str,
 ) -> Result<(DatabaseTransaction, agent::Model)> {
+    let (tx, row) = authenticate_credential(db, token).await?;
+    if row.agent_uuid.is_none() {
+        return Err(unauthorized());
+    }
+    Ok((tx, row))
+}
+
+async fn authenticate_credential(
+    db: &DatabaseConnection,
+    token: &str,
+) -> Result<(DatabaseTransaction, agent::Model)> {
     if token.len() != 68
         || !token.starts_with("rda_")
         || !token[4..].bytes().all(|b| b.is_ascii_hexdigit())
@@ -180,10 +191,49 @@ pub(super) async fn authenticate(
         .one(&tx)
         .await?
         .ok_or_else(unauthorized)?;
-    if row.revoked || row.agent_uuid.is_none() {
+    if row.revoked {
         return Err(unauthorized());
     }
     Ok((tx, row))
+}
+
+pub async fn enroll(db: &DatabaseConnection, token: &str, uuid: &str) -> Result<()> {
+    let (tx, row) = authenticate_credential(db, token).await?;
+    let peer = peer::Entity::find_by_id(row.peer_row_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(unauthorized)?;
+    if peer.status != 1 {
+        return Err(unauthorized());
+    }
+    let parsed = uuid::Uuid::parse_str(uuid)
+        .map_err(|_| Error(StatusCode::BAD_REQUEST, "invalid_agent_uuid"))?;
+    if parsed.get_version_num() != 4 || parsed.get_variant() != uuid::Variant::RFC4122 {
+        return Err(Error(StatusCode::BAD_REQUEST, "invalid_agent_uuid"));
+    }
+    let uuid = parsed.hyphenated().to_string();
+    if row.agent_uuid.as_ref().is_some_and(|value| value != &uuid) {
+        return Err(conflict());
+    }
+    if row.agent_uuid.is_none() {
+        let mut row: agent::ActiveModel = row.into();
+        row.agent_uuid = Set(Some(uuid));
+        row.update(&tx).await.map_err(enrollment_error)?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn enrollment_ready(db: &DatabaseConnection, token: &str) -> Result<bool> {
+    let (tx, row) = authenticate(db, token).await?;
+    let peer = peer::Entity::find_by_id(row.peer_row_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(unauthorized)?;
+    if peer.status != 1 {
+        return Err(unauthorized());
+    }
+    Ok(row.report_json.is_some())
 }
 
 async fn desired(tx: &DatabaseTransaction, row: &mut agent::Model) -> Result<Option<Desired>> {
