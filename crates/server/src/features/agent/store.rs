@@ -77,13 +77,17 @@ pub async fn create(db: &DatabaseConnection, peer_row_id: i32) -> Result<(i32, S
     Ok((row.id, credential))
 }
 
-pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
+fn canonical_uuid(uuid: &str) -> Result<String> {
     let parsed = uuid::Uuid::parse_str(uuid)
         .map_err(|_| Error(StatusCode::BAD_REQUEST, "invalid_agent_uuid"))?;
     if parsed.get_version_num() != 4 || parsed.get_variant() != uuid::Variant::RFC4122 {
         return Err(Error(StatusCode::BAD_REQUEST, "invalid_agent_uuid"));
     }
-    let uuid = parsed.hyphenated().to_string();
+    Ok(parsed.hyphenated().to_string())
+}
+
+pub async fn bind(db: &DatabaseConnection, id: i32, uuid: &str) -> Result<()> {
+    let uuid = canonical_uuid(uuid)?;
     let tx = db.begin().await?;
     let row = lock_agent(&tx, id).await?;
     if row.revoked || row.agent_uuid.as_ref().is_some_and(|v| v != &uuid) {
@@ -162,6 +166,17 @@ pub(super) async fn authenticate(
     db: &DatabaseConnection,
     token: &str,
 ) -> Result<(DatabaseTransaction, agent::Model)> {
+    let (tx, row) = authenticate_credential(db, token).await?;
+    if row.agent_uuid.is_none() {
+        return Err(unauthorized());
+    }
+    Ok((tx, row))
+}
+
+async fn authenticate_credential(
+    db: &DatabaseConnection,
+    token: &str,
+) -> Result<(DatabaseTransaction, agent::Model)> {
     if token.len() != 68
         || !token.starts_with("rda_")
         || !token[4..].bytes().all(|b| b.is_ascii_hexdigit())
@@ -180,20 +195,47 @@ pub(super) async fn authenticate(
         .one(&tx)
         .await?
         .ok_or_else(unauthorized)?;
-    if row.revoked || row.agent_uuid.is_none() {
+    if row.revoked {
         return Err(unauthorized());
     }
     Ok((tx, row))
 }
 
-async fn desired(tx: &DatabaseTransaction, row: &mut agent::Model) -> Result<Option<Desired>> {
-    let peer = peer::Entity::find_by_id(row.peer_row_id)
+pub async fn enroll(db: &DatabaseConnection, token: &str, uuid: &str) -> Result<()> {
+    let (tx, row) = authenticate_credential(db, token).await?;
+    enabled_peer(&tx, row.peer_row_id).await?;
+    let uuid = canonical_uuid(uuid)?;
+    if row.agent_uuid.as_ref().is_some_and(|value| value != &uuid) {
+        return Err(conflict());
+    }
+    if row.agent_uuid.is_none() {
+        let mut row: agent::ActiveModel = row.into();
+        row.agent_uuid = Set(Some(uuid));
+        row.update(&tx).await.map_err(enrollment_error)?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn enrollment_ready(db: &DatabaseConnection, token: &str) -> Result<bool> {
+    let (tx, row) = authenticate(db, token).await?;
+    enabled_peer(&tx, row.peer_row_id).await?;
+    Ok(row.report_json.is_some())
+}
+
+async fn enabled_peer(tx: &DatabaseTransaction, peer_row_id: i32) -> Result<peer::Model> {
+    let peer = peer::Entity::find_by_id(peer_row_id)
         .one(tx)
         .await?
         .ok_or_else(unauthorized)?;
     if peer.status != 1 {
         return Err(unauthorized());
     }
+    Ok(peer)
+}
+
+async fn desired(tx: &DatabaseTransaction, row: &mut agent::Model) -> Result<Option<Desired>> {
+    let peer = enabled_peer(tx, row.peer_row_id).await?;
     let settings = match crate::services::strategy::effective_for_peer(tx, &peer).await? {
         Some(strategy) => Settings::from_options(&strategy.config_options)
             .map_err(|_| Error(StatusCode::SERVICE_UNAVAILABLE, "invalid_agent_strategy"))?,
