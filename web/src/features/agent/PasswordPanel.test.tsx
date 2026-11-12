@@ -61,3 +61,27 @@ it("blocks another change while an operation is claimed", async () => {
   await screen.findByText("Waiting for the agent to resolve this password change");
   expect((screen.getByRole("button", { name: "Queue password change" }) as HTMLButtonElement).disabled).toBe(true);
 });
+
+it("shows sending and confirmed submission before status refresh completes", async () => {
+  await mount();
+  let resolvePost!: (value: unknown) => void;
+  vi.mocked(apiPost).mockImplementation(() => new Promise(resolve => { resolvePost = resolve; }));
+  vi.mocked(apiGet).mockImplementation(() => new Promise(() => {}));
+  fireEvent.change(screen.getByLabelText("New RustDesk password"), { target: { value: "test-only-password" } });
+  fireEvent.change(screen.getByLabelText("Confirm RustDesk password"), { target: { value: "test-only-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Queue password change" }));
+  expect(screen.getByRole("status").textContent).toBe("Sending password change request…");
+  resolvePost({ status: "queued" });
+  await screen.findByText("Password change request submitted. See the operation status for the agent's result.");
+});
+
+it("shows an uncertain-outcome error instead of success when submission fails", async () => {
+  await mount();
+  vi.mocked(apiPost).mockRejectedValue(new Error("network failure"));
+  fireEvent.change(screen.getByLabelText("New RustDesk password"), { target: { value: "test-only-password" } });
+  fireEvent.change(screen.getByLabelText("Confirm RustDesk password"), { target: { value: "test-only-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Queue password change" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("request outcome is uncertain");
+  expect(screen.queryByText(/Password change request submitted/)).toBeNull();
+  expect(screen.queryByText("Sending password change request…")).toBeNull();
+});
