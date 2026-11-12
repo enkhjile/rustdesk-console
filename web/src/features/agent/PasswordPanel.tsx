@@ -22,6 +22,7 @@ export function PasswordPanel({ agentId, session, enabled }: { agentId: number; 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
   const status = useQuery({
     queryKey: ["agent-password-operation", session, agentId],
     queryFn: () => apiGet<Status>(`/api/admin/agent/${agentId}/password`),
@@ -45,11 +46,12 @@ export function PasswordPanel({ agentId, session, enabled }: { agentId: number; 
     if (!/^[\x20-\x7e]{8,128}$/.test(value) || value !== confirmation.current?.value) {
       setError("passwordInvalid"); return;
     }
-    submitting.current = true; setBusy(true); setError(""); clear();
+    submitting.current = true; setBusy(true); setError(""); setFeedback("passwordSending"); clear();
     try {
       // No mutation cache, retries, password retrieval or browser persistence.
       await apiPost(`/api/admin/agent/${agentId}/password`, { password: value });
-    } catch { if (mounted.current) setError("passwordRequestFailed"); }
+      if (mounted.current && getAuthSessionId() === session) setFeedback("passwordSubmitted");
+    } catch { if (mounted.current) { setFeedback(""); setError("passwordRequestFailed"); } }
     finally {
       if (mounted.current && getAuthSessionId() === session) {
         await status.refetch();
@@ -59,9 +61,10 @@ export function PasswordPanel({ agentId, session, enabled }: { agentId: number; 
     }
   }
   return <div className="grid gap-3">
-    <Button variant="secondary" disabled={!enabled || busy} onClick={() => { clear(); setOpen(!open); }}>{t("passwordAction")}</Button>
+    <Button variant="secondary" disabled={!enabled || busy} onClick={() => { clear(); setFeedback(""); setOpen(!open); }}>{t("passwordAction")}</Button>
     {open && <form className="grid gap-3 rounded-lg border border-kumo-line p-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
       <p className="text-xs leading-5 text-kumo-subtle">{t("passwordHelp")}</p>
+      {feedback && <p role="status" className="rounded-lg border border-kumo-line bg-kumo-base p-3 text-sm">{t(feedback)}</p>}
       {status.data && !status.data.available && <p role="status">{t("passwordUnavailable")}</p>}
       {status.data?.operation && <p role="status">{t(labels[status.data.operation.status] || "agentNoResult")}</p>}
       {(error || status.isError) && <p role="alert">{t(error || "agentLoadFailed")}</p>}
