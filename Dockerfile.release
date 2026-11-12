@@ -1,0 +1,14 @@
+# CI supplies the same native musl binary used by the downloadable archive.
+# Local source builds continue to use Dockerfile.
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
+ENV TZ=Asia/Shanghai
+WORKDIR /app
+COPY rustdesk-console /app/rustdesk-console
+COPY conf /app/conf
+RUN mkdir -p /app/data /app/runtime
+VOLUME /app/data
+EXPOSE 21114
+CMD ["./rustdesk-console", "-c", "./conf/config.yaml"]
