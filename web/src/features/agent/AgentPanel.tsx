@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@cloudflare/kumo/components/button";
 import { useTranslation } from "react-i18next";
@@ -46,6 +46,51 @@ export function AgentPanel({ peerRowId }: { peerRowId: number }) {
   const session = useSyncExternalStore(subscribeAuthState, getAuthSessionId);
   if (!session || !Number.isSafeInteger(peerRowId) || peerRowId <= 0) return null;
   return <Panel key={`${session}:${peerRowId}`} peerRowId={peerRowId} session={session} />;
+}
+
+function NetworkDetails({ agent }: { agent: AgentStatus }) {
+  const { t } = useTranslation();
+  const localIps = agent.report?.local_ips;
+  let addresses: ReactNode;
+  if (localIps === undefined) {
+    addresses = t("agentNetworkUnavailable");
+  } else if (localIps.length === 0) {
+    addresses = t("agentNoIps");
+  } else {
+    addresses = localIps.map(ip => <div key={ip} className="break-all font-mono">{ip}</div>);
+  }
+
+  let location = t("agentNetworkUnavailable");
+  if (agent.location) {
+    const { city, region, country } = agent.location;
+    const uniqueParts = new Set([city, region, country].filter(Boolean));
+    location = [...uniqueParts].join(", ");
+  }
+  const receivedAt = agent.network?.observed_at;
+
+  return (
+    <>
+      <dl className="grid gap-3 rounded-lg border border-kumo-line p-3 text-sm sm:grid-cols-2">
+        <div className="min-w-0">
+          <dt className="text-xs text-kumo-subtle">{t("agentSourceIp")}</dt>
+          <dd className="break-all font-mono">{agent.network?.source_ip || t("agentNetworkUnavailable")}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs text-kumo-subtle">{t("agentLocalIps")}</dt>
+          <dd>{addresses}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-xs text-kumo-subtle">{t("agentLocation")}</dt>
+          <dd>{location}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-xs text-kumo-subtle">{t("agentNetworkSeen")}</dt>
+          <dd>{receivedAt ? formatUnixSeconds(receivedAt) : t("agentNever")}</dd>
+        </div>
+      </dl>
+      <p className="text-xs text-kumo-subtle">{t("agentLocationHelp")}</p>
+    </>
+  );
 }
 
 function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
@@ -158,13 +203,7 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                 <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentContact")}</dt><dd>{agent.last_seen > 0 ? formatUnixSeconds(agent.last_seen) : t("agentNever")}</dd></div>
               </dl>
               <p className="text-xs text-kumo-subtle">{t("agentContactHelp")}</p>
-              <dl className="grid gap-3 rounded-lg border border-kumo-line p-3 text-sm sm:grid-cols-2">
-                <div className="min-w-0"><dt className="text-xs text-kumo-subtle">{t("agentSourceIp")}</dt><dd className="break-all font-mono">{agent.network?.source_ip || t("agentNetworkUnavailable")}</dd></div>
-                <div className="min-w-0"><dt className="text-xs text-kumo-subtle">{t("agentLocalIps")}</dt><dd>{agent.report?.local_ips === undefined ? t("agentNetworkUnavailable") : agent.report.local_ips.length === 0 ? t("agentNoIps") : agent.report.local_ips.map(ip => <div key={ip} className="break-all font-mono">{ip}</div>)}</dd></div>
-                <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentLocation")}</dt><dd>{agent.location ? [...new Set([agent.location.city, agent.location.region, agent.location.country].filter(Boolean))].join(", ") : t("agentNetworkUnavailable")}</dd></div>
-                <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentNetworkSeen")}</dt><dd>{agent.network?.observed_at ? formatUnixSeconds(agent.network.observed_at) : t("agentNever")}</dd></div>
-              </dl>
-              <p className="text-xs text-kumo-subtle">{t("agentLocationHelp")}</p>
+              <NetworkDetails agent={agent} />
               {!agent.agent_uuid && !agent.revoked && (
                 <form className="grid gap-2" onSubmit={event => { event.preventDefault(); void perform("bind"); }}>
                   <label htmlFor={`${id}-uuid`} className="text-sm font-medium">{t("agentUuid")}</label>
