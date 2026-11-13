@@ -21,9 +21,12 @@ export interface AgentStatus {
   desired_settings: Settings | null;
   observation_sequence: string;
   last_seen: number;
+  network?: { source_ip: string | null; observed_at: number } | null;
+  location?: { country: string | null; region: string | null; city: string | null } | null;
   report: {
     desired_revision: number | null;
     management_mode?: "managed" | "observe_only";
+    local_ips?: string[];
     rustdesk_id: string | null;
     rustdesk_version: string | null;
     applied_revision: null;
@@ -155,6 +158,13 @@ function Panel({ peerRowId, session }: { peerRowId: number; session: string }) {
                 <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentContact")}</dt><dd>{agent.last_seen > 0 ? formatUnixSeconds(agent.last_seen) : t("agentNever")}</dd></div>
               </dl>
               <p className="text-xs text-kumo-subtle">{t("agentContactHelp")}</p>
+              <dl className="grid gap-3 rounded-lg border border-kumo-line p-3 text-sm sm:grid-cols-2">
+                <div className="min-w-0"><dt className="text-xs text-kumo-subtle">{t("agentSourceIp")}</dt><dd className="break-all font-mono">{agent.network?.source_ip || t("agentNetworkUnavailable")}</dd></div>
+                <div className="min-w-0"><dt className="text-xs text-kumo-subtle">{t("agentLocalIps")}</dt><dd>{agent.report?.local_ips === undefined ? t("agentNetworkUnavailable") : agent.report.local_ips.length === 0 ? t("agentNoIps") : agent.report.local_ips.map(ip => <div key={ip} className="break-all font-mono">{ip}</div>)}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentLocation")}</dt><dd>{agent.location ? [...new Set([agent.location.city, agent.location.region, agent.location.country].filter(Boolean))].join(", ") : t("agentNetworkUnavailable")}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-kumo-subtle">{t("agentNetworkSeen")}</dt><dd>{agent.network?.observed_at ? formatUnixSeconds(agent.network.observed_at) : t("agentNever")}</dd></div>
+              </dl>
+              <p className="text-xs text-kumo-subtle">{t("agentLocationHelp")}</p>
               {!agent.agent_uuid && !agent.revoked && (
                 <form className="grid gap-2" onSubmit={event => { event.preventDefault(); void perform("bind"); }}>
                   <label htmlFor={`${id}-uuid`} className="text-sm font-medium">{t("agentUuid")}</label>

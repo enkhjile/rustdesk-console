@@ -20,6 +20,8 @@ pub struct Model {
     pub sequence: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub report_json: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub network_json: Option<String>,
     pub last_seen: i64,
 }
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

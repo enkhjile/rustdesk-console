@@ -235,3 +235,33 @@ Normally installed managed agents apply assigned supported settings. Use
 observe-only mode when changes are not wanted; removing a policy leaves existing
 RustDesk settings unchanged. No production deployment was performed by these
 validation runs.
+
+## IP addresses and estimated location
+
+The device's Companion agent panel displays device-reported `local_ips`, the
+connection source IP, the latest accepted report receipt time, and an approximate
+IP-based city/region/country. The source address may be private when the agent
+connects over a private network. Location does not establish a physical address;
+VPNs and ISPs can change the estimate. Missing metadata is shown as unavailable.
+
+Upgrade Console first (schema migration 275 adds nullable `network_json`), then
+upgrade agents. Older reports remain accepted without `local_ips`; new lists
+must be non-null, unique, valid IP literals and contain at most 64 addresses.
+The exact list is part of retry identity. Source IP and receipt time are stored
+separately, only after report authentication, validation and ordering succeed.
+An identical retry may update source IP and receipt time; it does not imply that
+the device's saved address observation was refreshed.
+
+Location uses `GeoLite2-City.mmdb` beside the configured `rustdesk.key-file`.
+Use Console's existing Geo routing database controls to provision/update that
+database. No external geolocation requests or API credentials are required.
+Missing databases, private addresses and missing records produce no location.
+The reader is cached and refreshed when the database's modification time or size changes.
+
+By default, agent reports use the TCP peer address and ignore forwarding headers.
+Behind a reverse proxy, configure `CONSOLE_AGENT_TRUSTED_PROXIES` on Console as
+a comma-separated list of exact proxy IPs, for example `127.0.0.1,::1` for a
+local proxy. Only list proxies you control that correctly append or replace
+`X-Forwarded-For`. The chain is traversed right-to-left up to the first untrusted
+hop. Untrusted clients cannot override the connection address by sending headers.
+This feature does not change other Console endpoints' forwarding behavior.
