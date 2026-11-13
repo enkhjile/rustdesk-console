@@ -58,3 +58,6 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 rsa = "0.9.10"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

@@ -425,12 +425,44 @@ fn replace_with_backup(
         .map(|error| format!("MMDB was installed, but its directory sync failed: {error}")))
 }
 
+#[cfg(not(windows))]
 fn atomic_replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    #[cfg(not(unix))]
-    if target.exists() {
-        std::fs::remove_file(target)?;
-    }
     std::fs::rename(source, target)
+}
+
+#[cfg(windows)]
+fn atomic_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+    let wide = |path: &Path| -> std::io::Result<Vec<u16>> {
+        let mut value: Vec<_> = path.as_os_str().encode_wide().collect();
+        if value.contains(&0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "path contains NUL",
+            ));
+        }
+        value.push(0);
+        Ok(value)
+    };
+    let source = wide(source)?;
+    let target = wide(target)?;
+    // Both NUL-terminated paths remain alive for this synchronous call. Never
+    // remove the destination first: failed replacement must retain the old DB.
+    let result = unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            target.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 fn copy_private(source: &Path, target: &Path) -> Result<(), String> {
@@ -463,11 +495,19 @@ fn backup_path(target: &Path) -> PathBuf {
     PathBuf::from(value)
 }
 
+#[cfg(not(windows))]
 fn sync_directory(directory: &Path) -> Result<(), String> {
     let file = std::fs::File::open(directory)
         .map_err(|error| format!("cannot open MMDB directory for sync: {error}"))?;
     file.sync_all()
         .map_err(|error| format!("cannot sync MMDB directory: {error}"))
+}
+
+#[cfg(windows)]
+fn sync_directory(_directory: &Path) -> Result<(), String> {
+    // Windows uses the write-through replacement above instead of Unix
+    // directory fsync. File contents are flushed before replacement.
+    Ok(())
 }
 
 fn format_system_time(time: SystemTime) -> String {
@@ -543,6 +583,18 @@ mod tests {
             "GeoLite2-CountryAnything",
             MmdbKind::Country
         ));
+    }
+
+    #[test]
+    fn failed_replacement_preserves_existing_database() {
+        let directory =
+            std::env::temp_dir().join(format!("mmdb-failed-replace-{}", Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let target = directory.join("current.mmdb");
+        std::fs::write(&target, b"original").unwrap();
+        assert!(atomic_replace(&directory.join("missing.mmdb"), &target).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
