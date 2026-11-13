@@ -121,6 +121,19 @@ pub struct Report {
         deserialize_with = "present"
     )]
     pub management_mode: Option<ManagementMode>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "local_ips"
+    )]
+    pub local_ips: Option<Vec<std::net::IpAddr>>,
+}
+fn local_ips<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<std::net::IpAddr>>, D::Error> {
+    let ips = Vec::<std::net::IpAddr>::deserialize(d)?;
+    if ips.len() > 64 || ips.iter().enumerate().any(|(i, ip)| ips[..i].contains(ip)) {
+        return Err(serde::de::Error::custom("invalid local IP list"));
+    }
+    Ok(Some(ips))
 }
 impl Report {
     pub fn valid_for(&self, settings: Option<&Settings>) -> bool {
@@ -145,6 +158,28 @@ impl Report {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn local_ips_are_optional_bounded_and_validated() {
+        let body = json!({"schema_version":1,"agent_uuid":"test","rustdesk_id":null,"rustdesk_version":null,"desired_revision":null,"observation_sequence":1,"applied_revision":null,"results":{}});
+        assert!(serde_json::from_value::<Report>(body.clone())
+            .unwrap()
+            .valid_for(None));
+        let mut valid = body.clone();
+        valid["local_ips"] = json!(["192.168.1.20", "2001:db8::1"]);
+        assert!(serde_json::from_value::<Report>(valid)
+            .unwrap()
+            .valid_for(None));
+        for ips in [
+            json!(null),
+            json!(["bad"]),
+            json!(["192.168.1.20", "192.168.1.20"]),
+            json!(vec!["192.168.1.20"; 65]),
+        ] {
+            let mut invalid = body.clone();
+            invalid["local_ips"] = ips;
+            assert!(serde_json::from_value::<Report>(invalid).is_err());
+        }
+    }
     #[test]
     fn projects_only_allowlisted_values_and_rejects_invalid_selected_values() {
         let mut options =

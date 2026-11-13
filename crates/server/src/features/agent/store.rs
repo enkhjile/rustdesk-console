@@ -273,7 +273,17 @@ pub async fn poll(db: &DatabaseConnection, token: &str) -> Result<Option<Desired
     Ok(desired)
 }
 
+#[cfg(test)]
 pub async fn report(db: &DatabaseConnection, token: &str, report: Report) -> Result<()> {
+    report_from(db, token, report, None).await
+}
+
+pub async fn report_from(
+    db: &DatabaseConnection,
+    token: &str,
+    report: Report,
+    source_ip: Option<std::net::IpAddr>,
+) -> Result<()> {
     let (tx, mut row) = authenticate(db, token).await?;
     if row.agent_uuid.as_deref() != Some(&report.agent_uuid) {
         return Err(Error(StatusCode::FORBIDDEN, "agent_uuid_mismatch"));
@@ -294,6 +304,8 @@ pub async fn report(db: &DatabaseConnection, token: &str, report: Report) -> Res
     }
     row.sequence = report.observation_sequence.to_string();
     row.report_json = Some(body);
+    row.network_json =
+        Some(serde_json::json!({"source_ip":source_ip, "observed_at":now()}).to_string());
     save(tx, row).await
 }
 
@@ -333,6 +345,7 @@ pub async fn status(db: &DatabaseConnection, peer_id: i32) -> Result<serde_json:
             "policy_invalid": policy_invalid,
             "strategy_id": policy.map(|p| p.id),
             "observation_sequence": row.sequence, "last_seen": row.last_seen,
-            "reported_revision": reported_revision, "report": report
+            "reported_revision": reported_revision, "report": report,
+            "network": row.network_json.as_deref().map(serde_json::from_str::<serde_json::Value>).transpose()?
     }))
 }

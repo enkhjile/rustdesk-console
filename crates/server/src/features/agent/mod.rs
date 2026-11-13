@@ -1,3 +1,4 @@
+mod network;
 pub mod password;
 pub mod protocol;
 mod store;
@@ -80,10 +81,13 @@ async fn desired(State(state): State<AppState>, headers: HeaderMap) -> Result<Re
 }
 async fn status(
     State(state): State<AppState>,
+    peer: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, Error> {
-    store::report(&state.db, token(&headers), parse(&body)?).await?;
+    let trusted = network::trusted_proxies();
+    let source = network::source_ip(peer.map(|p| p.0.ip()), &headers, &trusted);
+    store::report_from(&state.db, token(&headers), parse(&body)?, source).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 #[derive(Deserialize)]
@@ -160,7 +164,17 @@ async fn peer_status(
     _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Response, Error> {
-    Ok(response::success(store::status(&state.db, id).await?))
+    let mut status = store::status(&state.db, id).await?;
+    if !status.is_null() {
+        let ip = status["network"]["source_ip"]
+            .as_str()
+            .and_then(|s| s.parse().ok());
+        let config = state.config.clone();
+        status["location"] = tokio::task::spawn_blocking(move || network::location(&config, ip))
+            .await
+            .unwrap_or(serde_json::Value::Null);
+    }
+    Ok(response::success(status))
 }
 
 async fn rotate(

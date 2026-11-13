@@ -35,6 +35,33 @@ async function issue() {
   await screen.findByDisplayValue(secret);
 }
 
+it("displays reported IPs and approximate location independently of policy", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
+    network: { source_ip: "203.0.113.42", observed_at: 1794500000 },
+    location: { city: "Ulaanbaatar", country: "Mongolia", region: null },
+    report: { desired_revision: null, local_ips: ["192.168.1.20", "2001:db8::1"], results: {} },
+  });
+  mount();
+  expect(await screen.findByText("203.0.113.42")).toBeDefined();
+  expect(screen.getByText("192.168.1.20")).toBeDefined();
+  expect(screen.getByText("2001:db8::1")).toBeDefined();
+  expect(screen.getByText("Ulaanbaatar, Mongolia")).toBeDefined();
+  expect(screen.getByText("Estimated location (IP-based)")).toBeDefined();
+});
+
+it("shows unavailable network data for older agents without inventing a location", async () => {
+  vi.mocked(apiGet).mockResolvedValue(enrolled);
+  mount();
+  await screen.findByText("Estimated location (IP-based)");
+  expect(screen.getAllByText("Unavailable").length).toBe(3);
+});
+
+it("distinguishes an empty address list from an older agent", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ ...enrolled, report: { desired_revision: null, local_ips: [], results: {} } });
+  mount();
+  expect(await screen.findByText("No eligible addresses")).toBeDefined();
+});
+
 it("shows managed readback without claiming independent verification", async () => {
   vi.mocked(apiGet).mockResolvedValue({ ...enrolled, agent_uuid: uuid,
     desired_revision: "7", reported_revision: "7", desired_settings: { approve_mode: "click" },

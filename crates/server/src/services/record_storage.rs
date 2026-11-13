@@ -548,6 +548,9 @@ mod tests {
         };
         let location = location_for(&cfg, "resources", "incoming_123.webm").unwrap();
         assert_eq!(location.backend, RECORD_STORAGE_LOCAL);
-        assert_eq!(location.key, "/var/record/incoming_123.webm");
+        assert_eq!(
+            std::path::Path::new(&location.key),
+            std::path::Path::new(&cfg.local_dir).join("incoming_123.webm")
+        );
     }
 }

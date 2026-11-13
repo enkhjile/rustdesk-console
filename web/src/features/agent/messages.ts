@@ -1,5 +1,12 @@
 export const agentMessages = {
   en: {
+    agentSourceIp: "Connection IP (public when directly reachable)",
+    agentLocalIps: "Device IP addresses",
+    agentLocation: "Estimated location (IP-based)",
+    agentNetworkSeen: "Network report received",
+    agentNetworkUnavailable: "Unavailable",
+    agentNoIps: "No eligible addresses",
+    agentLocationHelp: "Location is approximate and may identify a VPN or ISP. Unavailable if no GeoIP match or database is available. Device addresses are from the latest accepted report; retries may contain older observations.",
     passwordAction: "Change RustDesk password",
     passwordNew: "New RustDesk password",
     passwordConfirm: "Confirm RustDesk password",
@@ -70,6 +77,13 @@ export const agentMessages = {
     agentUnmanaged: "Unmanaged",
   },
   "zh-CN": {
+    agentSourceIp: "连接 IP（直接连接时为公网地址）",
+    agentLocalIps: "设备 IP 地址",
+    agentLocation: "估计位置（基于 IP）",
+    agentNetworkSeen: "网络报告接收时间",
+    agentNetworkUnavailable: "不可用",
+    agentNoIps: "无符合条件的地址",
+    agentLocationHelp: "位置仅供参考，可能是 VPN 或运营商的位置。无 GeoIP 数据库或匹配结果时不可用。设备地址来自最新接受的报告；重试可能包含较早的观测。",
     passwordAction: "更改 RustDesk 密码",
     passwordNew: "新的 RustDesk 密码",
     passwordConfirm: "确认 RustDesk 密码",

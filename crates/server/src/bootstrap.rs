@@ -35,7 +35,7 @@ use crate::support::webclient_config::{WebClientConfig, WebClientConfigStore};
 use crate::support::{external_webclient::ExternalWebClient, password};
 
 /// The schema version the binary expects (mirrors Go `DatabaseVersion`).
-pub const DATABASE_VERSION: i32 = 274;
+pub const DATABASE_VERSION: i32 = 275;
 
 type MigrationFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
 type MigrationFn = for<'a> fn(&'a DatabaseConnection, &'a Config) -> MigrationFuture<'a>;
@@ -73,7 +73,30 @@ const SCHEMA_MIGRATIONS: &[SchemaMigration] = &[
         name: "developer device group notes",
         apply: migration_274,
     },
+    SchemaMigration {
+        version: 275,
+        name: "agent network observations",
+        apply: migration_275,
+    },
 ];
+
+fn migration_275<'a>(db: &'a DatabaseConnection, _config: &'a Config) -> MigrationFuture<'a> {
+    Box::pin(async move {
+        if !column_exists(db, "companion_agents", "network_json").await? {
+            let statement = Table::alter()
+                .table(entity::companion_agent::Entity)
+                .add_column(
+                    ColumnDef::new(entity::companion_agent::Column::NetworkJson)
+                        .text()
+                        .null(),
+                )
+                .to_owned();
+            db.execute(db.get_database_backend().build(&statement))
+                .await?;
+        }
+        Ok(())
+    })
+}
 
 fn database_url(config: &Config) -> String {
     match config.db.r#type.as_str() {
@@ -199,7 +222,8 @@ fn migration_274<'a>(db: &'a DatabaseConnection, _config: &'a Config) -> Migrati
                         .default(""),
                 )
                 .to_owned();
-            db.execute(db.get_database_backend().build(&statement)).await?;
+            db.execute(db.get_database_backend().build(&statement))
+                .await?;
         }
         Ok(())
     })
@@ -645,6 +669,39 @@ mod tests {
     use super::*;
     use sea_orm::{Database, DbBackend, EntityTrait};
 
+    #[tokio::test]
+    async fn network_migration_preserves_existing_reports_and_is_repeatable() {
+        let db = memory_db().await;
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE companion_agents (id INTEGER PRIMARY KEY, report_json TEXT)".to_owned(),
+        ))
+        .await
+        .unwrap();
+        db.execute(Statement::from_string(
+            DbBackend::Sqlite,
+            "INSERT INTO companion_agents VALUES (1, '{}')".to_owned(),
+        ))
+        .await
+        .unwrap();
+        let config = test_config("");
+        migration_275(&db, &config).await.unwrap();
+        migration_275(&db, &config).await.unwrap();
+        let row = db
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT report_json, network_json FROM companion_agents WHERE id=1".to_owned(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.try_get::<String>("", "report_json").unwrap(), "{}");
+        assert_eq!(
+            row.try_get::<Option<String>>("", "network_json").unwrap(),
+            None
+        );
+    }
+
     #[test]
     fn database_credentials_cannot_change_url_structure() {
         let mut config = Config::default();
@@ -658,7 +715,10 @@ mod tests {
             config.postgresql.host = "localhost".to_string();
             let parsed = url::Url::parse(&database_url(&config)).unwrap();
             assert_eq!(parsed.host_str(), Some("localhost"));
-            assert_eq!(urlencoding::decode(parsed.username()).unwrap(), "user@/#?%:");
+            assert_eq!(
+                urlencoding::decode(parsed.username()).unwrap(),
+                "user@/#?%:"
+            );
             assert_eq!(
                 urlencoding::decode(parsed.password().unwrap()).unwrap(),
                 "pass@/#?%:"
@@ -726,7 +786,7 @@ mod tests {
             .map(|row| row.version)
             .collect::<Vec<_>>();
 
-        assert_eq!(versions, vec![271, 272, 273, DATABASE_VERSION]);
+        assert_eq!(versions, vec![271, 272, 273, 274, DATABASE_VERSION]);
     }
 
     #[tokio::test]

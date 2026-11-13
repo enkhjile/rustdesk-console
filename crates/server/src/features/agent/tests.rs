@@ -93,6 +93,61 @@ async fn request(
     )
 }
 #[tokio::test]
+async fn network_reports_store_source_and_preserve_retry_identity() {
+    let (app, db) = setup("sqlite::memory:").await;
+    let (_, credential, uuid) = enroll(&app, 1).await;
+    let body = json!({"schema_version":1,"agent_uuid":uuid,"rustdesk_id":null,
+        "rustdesk_version":null,"desired_revision":null,"observation_sequence":1,
+        "applied_revision":null,"results":{},"local_ips":["192.168.1.20","2001:db8::1"]})
+    .to_string();
+    for ip in ["203.0.113.42", "203.0.113.43"] {
+        let reply = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/agent/status")
+                    .header(header::AUTHORIZATION, format!("Bearer {credential}"))
+                    .header("x-forwarded-for", "1.2.3.4")
+                    .extension(axum::extract::ConnectInfo(std::net::SocketAddr::new(
+                        ip.parse().unwrap(),
+                        1234,
+                    )))
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reply.status(), StatusCode::NO_CONTENT);
+        let status = store::status(&db, 1).await.unwrap();
+        assert_eq!(status["network"]["source_ip"], ip);
+        assert!(status["network"]["observed_at"].as_i64().unwrap() > 0);
+        assert_eq!(
+            status["report"]["local_ips"],
+            json!(["192.168.1.20", "2001:db8::1"])
+        );
+    }
+    let previous = store::status(&db, 1).await.unwrap();
+    let changed = body.replace("192.168.1.20", "192.168.1.21");
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/status", &credential, "", &changed)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(&app, "POST", "/v1/agent/status", "invalid", "", &body)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        store::status(&db, 1).await.unwrap()["network"],
+        previous["network"]
+    );
+}
+
+#[tokio::test]
 async fn device_enrollment_binds_once_and_retries_without_resetting_state() {
     let (app, db) = setup("sqlite::memory:").await;
     let (id, credential) = store::create(&db, 1).await.unwrap();
